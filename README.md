@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/bricksentry)](https://pypi.org/project/bricksentry/) [![Python](https://img.shields.io/pypi/pyversions/bricksentry)](https://pypi.org/project/bricksentry/) [![CI](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml/badge.svg)](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-**Change-safety for Databricks pipelines and the AI agents that edit them.**
+***Change-safety for Databricks pipelines and the AI agents that edit them.***
 
 **Website and docs: [bricksentry.org](https://bricksentry.org)**
 
