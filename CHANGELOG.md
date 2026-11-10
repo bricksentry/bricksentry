@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4 (2026-11-10)
+
+From a second end-to-end run on Databricks serverless against a 2-million-row table:
+
+- Fix: a sampled diff (`sample_pct`) could report "no change" when the change sat outside the sample, for example one deleted row in 2 million at a 10% sample. A full-table checksum now guards every sampled diff: if the sample looks identical but the tables differ, the diff re-runs on all rows and says so in the summary (`sample_note`). Identical tables stay sampled and cheap. Turn it off with `sample_guard: false`.
+- Fix: `explain_diff` and `safe_to_ship` returned "unknown assessment id" when called from a different `Sentry` instance or process. Assessments are now saved as JSON (default `~/.bricksentry/assessments`, or `assessment_store:` in bricksentry.yml, or env `BRICKSENTRY_STORE`) and loaded by id. Set `assessment_store: false` to keep them in memory only.
+
 ## 0.1.3 (2026-11-10)
 
 - Blast radius no longer lists bricksentry's own `preview_write` clones, or tables that Unity Catalog lineage remembers but that no longer exist (when `information_schema` can confirm it). Before, every preview added a stale downstream entry. New lineage settings: `exclude` (name patterns, default `["*__preview_*"]`) and `exclude_dropped` (default true).

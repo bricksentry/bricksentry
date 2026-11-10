@@ -21,6 +21,12 @@ def backend():
     return b
 
 
+@pytest.fixture(autouse=True)
+def _isolated_store(tmp_path, monkeypatch):
+    """Saved assessments go to a temp folder, never the real home directory."""
+    monkeypatch.setenv("BRICKSENTRY_STORE", str(tmp_path / "assessments"))
+
+
 @pytest.fixture
 def config():
     return Config.from_dict(

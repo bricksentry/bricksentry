@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 import uuid
 from typing import Any
 
@@ -49,6 +51,7 @@ class Sentry:
             sample_pct=sample_pct if sample_pct is not None else self.config.sample_pct,
             segment_by=spec.segment_by,
             max_samples=self.config.max_samples,
+            sample_guard=self.config.sample_guard,
         )
         self._diffs[d.table] = d
         return d
@@ -126,6 +129,32 @@ class Sentry:
             notify=sorted(notify),
         )
         self._assessments[a.id] = a
+        self._save(a)
+        return a
+
+    # --- saved assessments -------------------------------------------------
+    def _save(self, a: Assessment) -> None:
+        """Save an assessment as JSON so another Sentry (another process, the MCP
+        server, a later notebook cell) can look it up by id. Best effort."""
+        folder = self.config.store_dir()
+        if folder is None:
+            return
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"{a.id}.json").write_text(json.dumps(a.to_dict(), default=str))
+        except OSError:
+            pass
+
+    def _load(self, assessment_id: str) -> Assessment | None:
+        folder = self.config.store_dir()
+        if folder is None or not re.fullmatch(r"[0-9a-f]{1,64}", assessment_id or ""):
+            return None
+        f = folder / f"{assessment_id}.json"
+        try:
+            a = Assessment.from_dict(json.loads(f.read_text()))
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        self._assessments[a.id] = a
         return a
 
     def preview_write(
@@ -159,7 +188,7 @@ class Sentry:
 
     # --- lookups for agents -------------------------------------------------
     def get_assessment(self, assessment_id: str) -> Assessment | None:
-        return self._assessments.get(assessment_id)
+        return self._assessments.get(assessment_id) or self._load(assessment_id)
 
     def get_diff(self, table: str) -> TableDiff | None:
         return self._diffs.get(table)

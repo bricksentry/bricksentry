@@ -89,6 +89,7 @@ class TableDiff:
     null_keys_candidate: int = 0
     segments: list[Segment] = field(default_factory=list)
     sampled_pct: float | None = None
+    sample_note: str | None = None
     error: str | None = None
 
     def _pct(self, n: int) -> float:
@@ -137,6 +138,24 @@ class TableDiff:
             c["sum_change_pct"] = cc.sum_change_pct
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> TableDiff:
+        sc = d.get("schema") or {}
+        schema = SchemaChange(
+            added=dict(sc.get("added") or {}),
+            removed=dict(sc.get("removed") or {}),
+            type_changed={
+                k: (v["base"], v["candidate"]) if isinstance(v, dict) else tuple(v)
+                for k, v in (sc.get("type_changed") or {}).items()
+            },
+        )
+        col_fields = {f for f in ColumnChange.__dataclass_fields__}
+        cols = [ColumnChange(**{k: v for k, v in c.items() if k in col_fields}) for c in d.get("columns") or []]
+        segs = [Segment(**s) for s in d.get("segments") or []]
+        skip = {"schema", "columns", "segments"}
+        rest = {k: v for k, v in d.items() if k in cls.__dataclass_fields__ and k not in skip}
+        return cls(schema=schema, columns=cols, segments=segs, **rest)
+
 
 @dataclass
 class ImpactNode:
@@ -162,6 +181,10 @@ class RuleHit:
 
     def to_dict(self) -> dict[str, Any]:
         return {"rule": self.rule, "verdict": self.verdict.value, "table": self.table, "reason": self.reason}
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> RuleHit:
+        return cls(rule=d["rule"], verdict=Verdict(d["verdict"]), table=d["table"], reason=d["reason"])
 
 
 @dataclass
@@ -190,6 +213,20 @@ class TableAssessment:
             "rollback": self.rollback,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> TableAssessment:
+        return cls(
+            table=d["table"],
+            diff=TableDiff.from_dict(d["diff"]) if d.get("diff") else None,
+            downstream=[ImpactNode(**n) for n in d.get("downstream") or []],
+            owner=d.get("owner"),
+            tags=dict(d.get("tags") or {}),
+            rollback=d.get("rollback"),
+            verdict=Verdict(d.get("verdict", "pass")),
+            hits=[RuleHit.from_dict(h) for h in d.get("rule_hits") or []],
+            summary=d.get("summary", ""),
+        )
+
 
 @dataclass
 class Assessment:
@@ -212,3 +249,12 @@ class Assessment:
             "rule_hits": [h.to_dict() for h in self.hits],
             "tables": [t.to_dict() for t in self.tables],
         }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Assessment:
+        return cls(
+            id=d["id"],
+            tables=[TableAssessment.from_dict(t) for t in d.get("tables") or []],
+            verdict=Verdict(d["verdict"]),
+            notify=list(d.get("notify") or []),
+        )

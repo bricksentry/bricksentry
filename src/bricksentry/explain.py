@@ -77,6 +77,8 @@ def explain_diff(d: TableDiff) -> str:
         s += f". Note: {_n(d.null_keys_candidate)} row(s) have a NULL key ({', '.join(d.keys)})"
     if d.sampled_pct:
         s += f" (based on a {d.sampled_pct:g}% key sample)"
+    if d.sample_note:
+        s += f" ({d.sample_note})"
     return s + "."
 
 

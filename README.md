@@ -77,7 +77,8 @@ Designed for agents:
 - **The verdict never comes from an LLM.** Rules in `policy.yml` decide, so the same change always gets the same answer.
 - **Read-only by default.** Only `preview_write` writes, and only to a sandbox clone. It accepts a single INSERT / MERGE / UPDATE / DELETE / CREATE OR REPLACE whose target must be the clone, and it refuses DROP, TRUNCATE, ALTER, GRANT and multiple statements.
 - **Errors come back as `{"error": ...}`**, so agents can recover instead of crashing.
-- **Bounded cost:** deterministic hash sampling (`sample_pct`), capped samples, and lineage limited by depth and lookback window.
+- **Bounded cost:** deterministic hash sampling (`sample_pct`), capped samples, and lineage limited by depth and lookback window. A full-table checksum guards the sample: if the sample shows no change but the tables differ, the diff re-runs on every row, so a one-row change can't slip through.
+- **Assessments are saved** as JSON (default `~/.bricksentry/assessments`), so `explain_diff` and `safe_to_ship` work from another process or a fresh `Sentry`.
 
 The same tools are plain Python functions in `bricksentry.agent_tools`, so you can use them from LangGraph, the OpenAI Agents SDK or the Databricks Agent Framework without MCP.
 
@@ -148,7 +149,8 @@ s.preview_write("DELETE FROM main.sales.orders WHERE status = 'test'", "main.sal
 backend: {type: databricks, warehouse_id: abc123}      # auth: standard Databricks SDK chain
 sandbox_schema: main.bricksentry_sandbox
 candidate_pattern: "{catalog}.{schema}_pr_{pr}.{table}"
-sample_pct: 10
+sample_pct: 10                                         # sample_guard re-checks the whole table (on by default)
+assessment_store: ~/.bricksentry/assessments           # or false to keep assessments in memory
 lineage: {type: databricks, depth: 3, lookback_days: 90}   # also: exclude, exclude_dropped
 tables:
   main.sales.orders:
@@ -207,7 +209,7 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 - **Lineage is recorded at runtime.** Brand-new tables have no downstream history yet. Unity Catalog doesn't capture RDD operations, and UDFs hide column-level mapping.
 - **Keys are required.** Tables without a stable key can't be diffed row by row yet (an aggregate-profile mode is planned).
 - **Changed-table detection uses path globs** from config. It doesn't parse Asset Bundles yet.
-- **Validated on one Databricks workspace so far** (serverless, November 2026): lineage, Delta rollback plans, previews on shallow clones, every verdict level and sampling. The automated tests use DuckDB and a mocked SDK, so please [open an issue](https://github.com/bricksentry/bricksentry/issues) if something behaves differently on yours.
+- **Validated on one Databricks workspace so far** (serverless, November 2026, on a 2-million-row table): lineage, Delta rollback plans, previews on shallow clones, every verdict level and sampling. The automated tests use DuckDB and a mocked SDK, so please [open an issue](https://github.com/bricksentry/bricksentry/issues) if something behaves differently on yours.
 
 ## Roadmap
 

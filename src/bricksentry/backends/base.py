@@ -47,6 +47,13 @@ class Backend(ABC):
     def sample_predicate(self, keys: list[str], pct: float, alias: str | None = None) -> str:
         """Deterministic hash sample on the key columns, identical on both sides."""
 
+    def row_checksum(self, columns: list[str]) -> str | None:
+        """SQL aggregate: an order-independent checksum over ``columns`` for every row.
+
+        Used to check a sampled diff against the whole table. ``None`` means the
+        backend has no cheap row hash, and the guard is skipped."""
+        return None
+
     @abstractmethod
     def days_ago(self, days: int) -> str:
         """SQL expression for the date ``days`` days ago."""

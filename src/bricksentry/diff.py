@@ -36,6 +36,56 @@ def diff_tables(
     segment_by: list[str] | None = None,
     max_samples: int = 5,
     columns: list[str] | None = None,
+    sample_guard: bool = True,
+) -> TableDiff:
+    """Diff ``base`` against ``candidate``.
+
+    With ``sample_pct``, only a hash sample of keys is compared. ``sample_guard``
+    (on by default) then checks a full-table checksum: if the sample shows no
+    change but the tables differ, the diff re-runs on every row, so a small change
+    outside the sample can never pass as "no change".
+    """
+    d = _diff(backend, base, candidate, keys, table=table, sample_pct=sample_pct,
+              segment_by=segment_by, max_samples=max_samples, columns=columns)
+    if not (sample_pct and sample_guard and d.is_identical):
+        return d
+    cols = list(d.keys) + [c.column for c in d.columns]
+    full = _full_fingerprints(backend, base, candidate, cols)
+    if full is None or full[0] == full[1]:
+        return d
+    full_d = _diff(backend, base, candidate, keys, table=table, sample_pct=None,
+                   segment_by=segment_by, max_samples=max_samples, columns=columns)
+    full_d.sample_note = (
+        f"The {sample_pct:g}% sample showed no changes, but the full tables differ, "
+        "so the diff was re-run on all rows."
+    )
+    return full_d
+
+
+def _full_fingerprints(backend: Backend, base: str, candidate: str, cols: list[str]):
+    """(rows, checksum) for each table over all rows, or None if unsupported."""
+    agg = backend.row_checksum(cols)
+    if agg is None:
+        return None
+
+    def fp(tbl: str):
+        r = backend.query(f"SELECT COUNT(*) AS n, {agg} AS h FROM {backend.qualified(tbl)}")[0]
+        return int(r.get("n") or 0), str(r.get("h"))
+
+    return fp(base), fp(candidate)
+
+
+def _diff(
+    backend: Backend,
+    base: str,
+    candidate: str,
+    keys: list[str],
+    *,
+    table: str | None,
+    sample_pct: float | None,
+    segment_by: list[str] | None,
+    max_samples: int,
+    columns: list[str] | None,
 ) -> TableDiff:
     if not keys:
         raise DiffError(

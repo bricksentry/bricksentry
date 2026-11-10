@@ -8,6 +8,8 @@ Example::
     sandbox_schema: main.bricksentry_sandbox
     candidate_pattern: "{catalog}.{schema}_pr_{pr}.{table}"
     sample_pct: 10                # diff a deterministic 10% hash sample (omit for full diff)
+    sample_guard: true            # re-run on all rows if the sample misses a change (default)
+    assessment_store: ~/.bricksentry/assessments   # where assessments are saved; false to keep them in memory only
     lineage:
       depth: 3
       lookback_days: 90
@@ -46,6 +48,8 @@ class Config:
     sandbox_schema: str = "bricksentry_sandbox"
     candidate_pattern: str = "{catalog}.{schema}_ci.{table}"
     sample_pct: float | None = None
+    sample_guard: bool = True
+    assessment_store: str | bool | None = None
     max_samples: int = 5
     lineage: dict[str, Any] = field(default_factory=dict)
     tables: dict[str, TableSpec] = field(default_factory=dict)
@@ -79,6 +83,8 @@ class Config:
             sandbox_schema=data.get("sandbox_schema", "bricksentry_sandbox"),
             candidate_pattern=data.get("candidate_pattern", "{catalog}.{schema}_ci.{table}"),
             sample_pct=data.get("sample_pct"),
+            sample_guard=bool(data.get("sample_guard", True)),
+            assessment_store=data.get("assessment_store"),
             max_samples=int(data.get("max_samples", 5)),
             lineage=data.get("lineage") or {},
             tables=tables,
@@ -100,6 +106,16 @@ class Config:
         p = Path(path)
         data = yaml.safe_load(p.read_text()) or {}
         return cls.from_dict(data, root=p.resolve().parent)
+
+    def store_dir(self) -> Path | None:
+        """Folder where assessments are saved as JSON, or None to keep them in memory."""
+        v = self.assessment_store
+        if v is False:
+            return None
+        if v in (None, True, ""):
+            v = os.environ.get("BRICKSENTRY_STORE") or "~/.bricksentry/assessments"
+        p = Path(str(v)).expanduser()
+        return p if p.is_absolute() else (self.root / p)
 
     def spec(self, table: str) -> TableSpec:
         if table in self.tables:

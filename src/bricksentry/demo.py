@@ -110,7 +110,7 @@ def run_demo(report_path: str | None = None) -> dict[str, Any]:
 
     backend.execute("CREATE SCHEMA sales; CREATE SCHEMA sales_pr_42")
     backend.execute(SEED_SQL)
-    sentry = Sentry(Config.from_dict(CONFIG), backend=backend)
+    sentry = Sentry(Config.from_dict({**CONFIG, "assessment_store": False}), backend=backend)
     previous = agent_tools._SENTRY
     agent_tools.set_sentry(sentry)
     results: dict[str, Any] = {}

@@ -102,6 +102,10 @@ class DatabricksBackend(Backend):
     def quote(self, ident: str) -> str:
         return "`" + ident.replace("`", "``") + "`"
 
+    def row_checksum(self, columns: list[str]) -> str | None:
+        cols = ", ".join(self.quote(c) for c in columns)
+        return f"SUM(CAST(xxhash64({cols}) AS DECIMAL(38, 0)))"
+
     def sample_predicate(self, keys: list[str], pct: float, alias: str | None = None) -> str:
         pre = f"{alias}." if alias else ""
         cols = ", ".join(f"{pre}{self.quote(k)}" for k in keys)
