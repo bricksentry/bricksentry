@@ -220,3 +220,7 @@ Bug reports from real pipelines help the most. See [CONTRIBUTING.md](CONTRIBUTIN
 ## License
 
 Apache-2.0. Created and maintained by Brahma - Databricks Champion.
+
+## Trademarks
+
+bricksentry is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by Databricks, Inc. or Functional Software, Inc. (Sentry). Databricks, Unity Catalog and Lakeflow are trademarks of Databricks, Inc. Delta Lake is a trademark of the Linux Foundation, and Apache Spark and PySpark are trademarks of the Apache Software Foundation. All other names are the trademarks of their respective owners and are used here only to describe compatibility.
