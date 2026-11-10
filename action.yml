@@ -1,0 +1,59 @@
+name: bricksentry
+description: Data diff, Unity Catalog blast radius and a policy verdict for every pull request that changes Databricks pipelines.
+branding:
+  icon: shield
+  color: orange
+
+inputs:
+  config:
+    description: Path to bricksentry.yml
+    default: bricksentry.yml
+  base-ref:
+    description: Git ref to compare against for changed-table detection (defaults to the PR base branch)
+    default: ""
+  tables:
+    description: Optional space-separated list of tables to always assess
+    default: ""
+  fail-on:
+    description: Fail the check when the verdict is at least this severe (pass, warn, needs_human, block)
+    default: needs_human
+  comment:
+    description: Post or update a PR comment with the report
+    default: "true"
+  version:
+    description: bricksentry version spec to install (e.g. "==0.1.0"); empty = latest
+    default: ""
+
+outputs:
+  verdict:
+    description: pass, warn, needs_human or block
+    value: ${{ steps.run.outputs.verdict }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install bricksentry
+      shell: bash
+      run: pip install "bricksentry[databricks]${{ inputs.version }}"
+    - name: Assess change
+      id: run
+      shell: bash
+      env:
+        BRICKSENTRY_PR: ${{ github.event.pull_request.number }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        set +e
+        BASE="${{ inputs.base-ref }}"
+        if [ -z "$BASE" ]; then BASE="origin/${{ github.base_ref }}"; fi
+        ARGS=(assess --config "${{ inputs.config }}" --from-git "$BASE" --format json --output bricksentry-report.md --fail-on "${{ inputs.fail-on }}")
+        for t in ${{ inputs.tables }}; do ARGS+=(--table "$t"); done
+        if [ "${{ inputs.comment }}" = "true" ] && [ -n "$BRICKSENTRY_PR" ]; then ARGS+=(--comment); fi
+        bricksentry "${ARGS[@]}" > bricksentry-result.json
+        CODE=$?
+        VERDICT=$(python -c "import json;print(json.load(open('bricksentry-result.json')).get('verdict','pass'))" 2>/dev/null || echo "error")
+        echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+        [ -f bricksentry-report.md ] && cat bricksentry-report.md >> "$GITHUB_STEP_SUMMARY"
+        exit $CODE

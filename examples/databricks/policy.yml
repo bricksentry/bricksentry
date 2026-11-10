@@ -1,0 +1,19 @@
+# Policy-as-code. Every condition in a `when` must hold; add rules for OR.
+# Verdicts: pass < warn < needs_human < block. The worst matching rule wins.
+default: pass
+notify_owners_on: needs_human
+
+rules:
+  - {name: diff-failed,          when: {diff_error: true},                       then: needs_human}
+  - {name: duplicate-keys,       when: {duplicate_keys: true},                   then: block}
+  - {name: dropped-column,       when: {column_removed: true},                   then: needs_human}
+  - {name: type-change,          when: {column_type_changed: true},              then: warn}
+  - {name: certified-downstream, when: {downstream_tag: certified},              then: needs_human}
+  - {name: pii-table,            when: {tag: pii},                               then: needs_human}
+  - {name: row-loss,             when: {removed_pct_gt: 1},                      then: needs_human}
+  - {name: many-rows-changed,    when: {changed_pct_gt: 10},                     then: warn}
+  - {name: revenue-moved,        when: {column: amount, sum_change_pct_gt: 2},   then: needs_human}
+  - {name: new-nulls-in-email,   when: {column: email, null_increase_gt: 0},     then: warn}
+  - {name: exec-dashboards,      when: {downstream_kind: dashboard, any_change: true}, then: warn}
+  - {name: gold-layer,           when: {table: "*.gold.*", any_change: true},    then: needs_human}
+  - {name: wide-blast-radius,    when: {downstream_count_gt: 25},                then: warn}

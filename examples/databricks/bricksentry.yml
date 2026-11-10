@@ -1,0 +1,34 @@
+# Example config for a Databricks workspace.
+backend:
+  type: databricks
+  # warehouse_id: 1234567890abcdef     # or set DATABRICKS_WAREHOUSE_ID
+  # profile: DEFAULT                   # ~/.databrickscfg profile; CI usually uses env vars
+
+# Disposable clones for preview_write live here (SHALLOW CLONE, metadata only).
+sandbox_schema: main.bricksentry_sandbox
+
+# Your CI job builds the changed pipeline into a per-PR schema; bricksentry diffs it against prod.
+candidate_pattern: "{catalog}.{schema}_pr_{pr}.{table}"
+
+# Big tables: diff a deterministic 10% key sample. Remove for full diffs.
+sample_pct: 10
+max_samples: 5
+
+lineage:
+  type: databricks      # reads system.access.table_lineage + information_schema
+  depth: 3
+  lookback_days: 90
+
+tables:
+  main.sales.orders:
+    keys: [order_id]
+    segment_by: [region, channel]
+    paths:
+      - "src/pipelines/orders/**"
+      - "resources/orders_job.yml"
+  main.sales.daily_revenue:
+    keys: [revenue_date, region]
+    paths:
+      - "src/pipelines/revenue/**"
+
+policy: policy.yml

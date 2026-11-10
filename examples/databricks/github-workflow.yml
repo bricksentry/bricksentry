@@ -1,0 +1,44 @@
+# .github/workflows/bricksentry.yml
+# 1) build the PR's version of the pipeline into a per-PR schema, 2) let bricksentry review it.
+name: bricksentry
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  data-review:
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      DATABRICKS_WAREHOUSE_ID: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for changed-file detection
+
+      # Build candidate tables with your bundle, writing to {schema}_pr_<number>.
+      - uses: databricks/setup-cli@main
+      - run: databricks bundle deploy -t ci --var="pr=${{ github.event.pull_request.number }}"
+      - run: databricks bundle run orders_job -t ci --var="pr=${{ github.event.pull_request.number }}"
+
+      # Review the data change: diff, blast radius, policy verdict, PR comment.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "bricksentry[databricks]"
+      - run: >
+          bricksentry assess
+          --config bricksentry.yml
+          --from-git origin/${{ github.base_ref }}
+          --pr ${{ github.event.pull_request.number }}
+          --comment --output bricksentry-report.md
+          --fail-on needs_human
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - if: always()
+        run: cat bricksentry-report.md >> "$GITHUB_STEP_SUMMARY" || true
