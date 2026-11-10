@@ -10,6 +10,8 @@ Change-safety for Databricks pipelines and the AI agents that edit them: know wh
 
 Built by Brahma, Databricks Champion. Open source under Apache-2.0.
 
+*Why the name?* Bricks plus entry. Your tables and pipelines are the bricks of the lakehouse, and every change to them is an entry. bricksentry checks each entry, reports what it does, and stands guard before it lands.
+
 ## Try it in 30 seconds (no Databricks needed)
 
 ```bash
