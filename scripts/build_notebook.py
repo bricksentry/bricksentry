@@ -23,8 +23,8 @@ def cells_from_source(text: str) -> list[dict]:
         lines = raw.strip("\n").splitlines()
         if not lines:
             continue
-        if all(l.startswith("# MAGIC") for l in lines):
-            stripped = [l[len("# MAGIC"):].removeprefix(" ") for l in lines]
+        if all(ln.startswith("# MAGIC") for ln in lines):
+            stripped = [ln[len("# MAGIC"):].removeprefix(" ") for ln in lines]
             if stripped[0].startswith("%md"):
                 md = stripped[1:]
                 cells.append({"cell_type": "markdown", "metadata": {}, "source": _src(md)})
@@ -36,7 +36,7 @@ def cells_from_source(text: str) -> list[dict]:
 
 
 def _src(lines: list[str]) -> list[str]:
-    return [l + "\n" for l in lines[:-1]] + ([lines[-1]] if lines else [])
+    return [ln + "\n" for ln in lines[:-1]] + ([lines[-1]] if lines else [])
 
 
 def _code(lines: list[str]) -> dict:

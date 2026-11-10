@@ -53,7 +53,7 @@ class Config:
     root: Path = field(default_factory=Path.cwd)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], root: Path | None = None) -> "Config":
+    def from_dict(cls, data: dict[str, Any], root: Path | None = None) -> Config:
         root = root or Path.cwd()
         tables = {}
         for name, spec in (data.get("tables") or {}).items():
@@ -87,7 +87,7 @@ class Config:
         )
 
     @classmethod
-    def load(cls, path: str | os.PathLike | None = None) -> "Config":
+    def load(cls, path: str | os.PathLike | None = None) -> Config:
         if path is None:
             path = os.environ.get("BRICKSENTRY_CONFIG")
         if path is None:

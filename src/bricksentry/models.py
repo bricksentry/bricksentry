@@ -30,7 +30,7 @@ class Verdict(str, Enum):
         }[self]
 
     @staticmethod
-    def worst(verdicts: list["Verdict"]) -> "Verdict":
+    def worst(verdicts: list[Verdict]) -> Verdict:
         return max(verdicts, key=lambda v: v.rank, default=Verdict.PASS)
 
 
@@ -133,7 +133,7 @@ class TableDiff:
         d["changed_pct"] = self.changed_pct
         d["row_count_change_pct"] = self.row_count_change_pct
         d["is_identical"] = self.is_identical
-        for c, cc in zip(d["columns"], self.columns):
+        for c, cc in zip(d["columns"], self.columns, strict=False):
             c["sum_change_pct"] = cc.sum_change_pct
         return d
 

@@ -1,12 +1,14 @@
 # bricksentry
 
-[![PyPI](https://img.shields.io/pypi/v/bricksentry)](https://pypi.org/project/bricksentry/) [![Python](https://img.shields.io/pypi/pyversions/bricksentry)](https://pypi.org/project/bricksentry/) [![CI](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml/badge.svg)](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/bricksentry)](https://pypi.org/project/bricksentry/) [![Python](https://img.shields.io/pypi/pyversions/bricksentry)](https://pypi.org/project/bricksentry/) [![Tests](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml/badge.svg)](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml) [![Lint](https://github.com/bricksentry/bricksentry/actions/workflows/lint.yml/badge.svg)](https://github.com/bricksentry/bricksentry/actions/workflows/lint.yml) [![Coverage](https://img.shields.io/badge/coverage-%E2%89%A575%25%20enforced-brightgreen)](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 ***The safety check for data changes in the AI era.***
 
 Change-safety for Databricks pipelines and the AI agents that edit them: know what a change does to your data before it ships.
 
-**Website and docs: [bricksentry.org](https://bricksentry.org)**
+**[Try it in 30 seconds](#try-it-in-30-seconds-no-databricks-needed)** · **[Run the Databricks notebook](#run-it-in-your-databricks-workspace)** · **[Docs: bricksentry.org](https://bricksentry.org)**
+
+Built by Brahma, Databricks Champion. Open source under Apache-2.0.
 
 ## Try it in 30 seconds (no Databricks needed)
 
@@ -19,15 +21,12 @@ An AI agent changes a 20,000-row revenue table. bricksentry previews its DELETE 
 
 ![bricksentry demo: an agent's change is previewed, blocked for duplicate keys, then routed to the table owners](https://raw.githubusercontent.com/bricksentry/bricksentry/main/docs/images/demo.png)
 
-### Or run it in your Databricks workspace
+## Run it in your Databricks workspace
+
+> **Databricks quickstart notebook:** in your workspace, go to **Workspace → Import → URL** and paste
+> `https://raw.githubusercontent.com/bricksentry/bricksentry/main/examples/databricks/bricksentry_quickstart.py`
 
 The [quickstart notebook](examples/databricks/bricksentry_quickstart.py) creates a small demo table in a schema you choose and runs the same loop on Databricks: Unity Catalog blast radius, a real `RESTORE` rollback plan, a preview on a shallow clone, a blocked pull request and the fix. Then it checks one of your own tables, read-only, and cleans up after itself.
-
-In Databricks: **Workspace → Import → URL**, and paste:
-
-```
-https://raw.githubusercontent.com/bricksentry/bricksentry/main/examples/databricks/bricksentry_quickstart.py
-```
 
 You need a SQL warehouse, `CREATE TABLE` on the schema you pick, and `SELECT` on `system.access.table_lineage` for the blast radius. A Jupyter copy is in [`bricksentry_quickstart.ipynb`](examples/databricks/bricksentry_quickstart.ipynb).
 
@@ -157,6 +156,37 @@ tables:
 policy: policy.yml
 ```
 
+### Policy example
+
+A small `policy.yml` with one rule per severity. `pass` is the default: a change gets it when no rule matches.
+
+```yaml
+default: pass                       # no rule matched -> pass
+notify_owners_on: needs_human       # tag downstream owners from this level up
+
+rules:
+  - name: type-change               # a column changed type -> warn
+    when: {column_type_changed: true}
+    then: warn
+
+  - name: revenue-moved             # total revenue moved more than 2% -> a human signs off
+    when: {column: amount, sum_change_pct_gt: 2}
+    then: needs_human
+
+  - name: duplicate-keys            # a join fanned out and duplicated keys -> block the PR
+    when: {duplicate_keys: true}
+    then: block
+```
+
+| The change | Verdict |
+|---|---|
+| A filter fix that changes 40 rows, nothing else | `pass` |
+| `order_date` goes from `STRING` to `DATE` | `warn` |
+| A pricing fix moves `SUM(amount)` by 3.1% | `needs_human` |
+| A new join duplicates 40 `order_id`s | `block` |
+
+If several rules match, the most severe one wins. The full starter policy is in [`examples/databricks/policy.yml`](examples/databricks/policy.yml), and `bricksentry init` writes one for you.
+
 ### Policy conditions
 
 `table` (glob) · `tag` · `downstream_tag` · `downstream_kind` · `downstream_count_gt` · `removed_pct_gt` · `added_pct_gt` · `changed_pct_gt` · `row_count_change_pct_gt` · `row_count_drop_pct_gt` · `column_removed` · `column_added` · `column_type_changed` · `duplicate_keys` · `null_keys` · `sum_change_pct_gt` / `null_increase_gt` (optionally with `column`) · `any_change` · `diff_error`
@@ -179,7 +209,9 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 
 ## Roadmap
 
-Asset Bundle parsing for automatic table detection · column-level blast radius from `system.access.column_lineage` · an aggregate diff for keyless tables · Lakeflow expectations in the verdict · `bricksentry watch` for scheduled drift checks · a Databricks App UI.
+**Top priority: validation across more workspaces.** Classic and serverless compute, AWS, Azure and GCP, and workspaces with restricted system-table access. If you run the quickstart notebook, please [share what you see](https://github.com/bricksentry/bricksentry/issues), whether it works or not.
+
+Next: Asset Bundle parsing for automatic table detection · column-level blast radius from `system.access.column_lineage` · an aggregate diff for keyless tables · Lakeflow expectations in the verdict · `bricksentry watch` for scheduled drift checks · a Databricks App UI.
 
 ## Contributing
 

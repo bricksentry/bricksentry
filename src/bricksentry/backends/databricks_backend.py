@@ -87,7 +87,7 @@ class DatabricksBackend(Backend):
             if nxt is None:
                 break
             chunk = api.get_statement_result_chunk_n(resp.statement_id, nxt)
-        return [{n: _convert(v, t) for n, v, t in zip(names, row, types)} for row in rows]
+        return [{n: _convert(v, t) for n, v, t in zip(names, row, types, strict=False)} for row in rows]
 
     @staticmethod
     def _format_kwargs() -> dict[str, Any]:
