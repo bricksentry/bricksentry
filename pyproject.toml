@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bricksentry"
-version = "0.1.0"
+version = "0.1.1"
 description = "Change-safety for Databricks pipelines and the AI agents that edit them: data diffs, Unity Catalog blast radius, policy verdicts and rollback plans."
 readme = "README.md"
 requires-python = ">=3.10"

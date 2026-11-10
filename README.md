@@ -6,6 +6,19 @@
 
 **Website and docs: [bricksentry.org](https://bricksentry.org)**
 
+## Try it in 30 seconds (no Databricks needed)
+
+```bash
+pip install "bricksentry[duckdb]"
+bricksentry demo
+```
+
+An AI agent changes a 20,000-row revenue table. bricksentry previews its DELETE on a clone (production untouched), **blocks** its pull request for a join that duplicates 40 orders, and routes the fixed version to the owners of a certified table downstream. Everything runs locally on DuckDB.
+
+![bricksentry demo: an agent's change is previewed, blocked for duplicate keys, then routed to the table owners](https://raw.githubusercontent.com/bricksentry/bricksentry/main/docs/images/demo.png)
+
+## What it does
+
 Before a change reaches production, bricksentry answers three questions, in a
 pull-request comment for humans and in structured JSON for agents:
 
@@ -13,8 +26,11 @@ pull-request comment for humans and in structured JSON for agents:
 2. **Who gets hurt?** The downstream blast radius from Unity Catalog lineage: tables, jobs, notebooks, Lakeflow pipelines, dashboards and queries, with owners and tags.
 3. **Is it safe, and how do I undo it?** A deterministic policy verdict (`pass` · `warn` · `needs_human` · `block`) and the exact `RESTORE TABLE … VERSION AS OF n` rollback.
 
-```
+For your Databricks workspace:
+
+```bash
 pip install "bricksentry[databricks,mcp]"
+bricksentry init        # writes bricksentry.yml and policy.yml
 ```
 
 ## Why it exists
@@ -50,14 +66,7 @@ Designed for agents:
 
 The same tools are plain Python functions in `bricksentry.agent_tools`, so you can use them from LangGraph, the OpenAI Agents SDK or the Databricks Agent Framework without MCP.
 
-### See the agent loop (no Databricks needed)
-
-```bash
-pip install "bricksentry[duckdb]"
-python examples/demo/agent_loop_demo.py
-```
-
-In the demo, an agent previews a risky DELETE (needs_human, production untouched), ships a pipeline change with a join fan-out (**blocked**: 40 duplicate keys), fixes it, and gets routed to the certified table's owners. It ends with the pull-request comment a reviewer would see.
+To watch the whole loop, run `bricksentry demo` (see the top of this page). `bricksentry demo --report report.md` also writes the pull-request comment a reviewer would see.
 
 ## For data engineers: CLI and CI
 
@@ -90,7 +99,11 @@ Exit codes: `0` below `--fail-on`, `1` at or above it, `2` for configuration err
     DATABRICKS_WAREHOUSE_ID: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
 ```
 
-It detects changed tables from the files in the PR and posts or updates one PR comment. Check out with `fetch-depth: 0` and give the job `pull-requests: write` permission.
+It detects changed tables from the files in the PR and posts or updates one PR comment, like this one for the demo's fan-out bug:
+
+![A bricksentry pull-request comment: blocked for 40 duplicate keys, with the data diff and blast radius](https://raw.githubusercontent.com/bricksentry/bricksentry/main/docs/images/pr-comment.png)
+
+Check out with `fetch-depth: 0` and give the job `pull-requests: write` permission.
 
 Or use the bundled GitHub Action, which also writes the report to the job summary:
 
@@ -143,7 +156,7 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 - `SELECT` on `system.access.table_lineage`, plus `system.information_schema` for owners and tags. Without these, bricksentry still diffs; lineage is just empty.
 - `CREATE TABLE` on `sandbox_schema`, for `preview_write`.
 
-## Known limits (v0.1)
+## Known limits (v0.1.x)
 
 - **Lineage is recorded at runtime.** Brand-new tables have no downstream history yet. Unity Catalog doesn't capture RDD operations, and UDFs hide column-level mapping.
 - **Keys are required.** Tables without a stable key can't be diffed row by row yet (an aggregate-profile mode is planned).

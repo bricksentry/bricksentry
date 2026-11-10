@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 (unreleased)
 
+- New `bricksentry demo` command: the full agent safety loop on a local 20,000-row example in about 30 seconds (`pip install "bricksentry[duckdb]"`). `--report FILE` also writes the pull-request comment.
+- Fix: the "Review requested from" line in PR comments no longer runs into the line above it.
 - Project links (website, docs, source, issues, changelog) in package metadata.
 - CI on Python 3.10 to 3.13, and release automation through PyPI Trusted Publishing.
 - CONTRIBUTING, SECURITY and issue templates.

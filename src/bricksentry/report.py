@@ -29,7 +29,7 @@ def to_markdown(a: Assessment, max_downstream: int = 15) -> str:
         f"**Risk tier:** `{v.risk_tier}` · **Tables checked:** {len(a.tables)} · **Assessment:** `{a.id}`",
     ]
     if a.notify:
-        lines.append(f"**Review requested from:** {', '.join(a.notify)}")
+        lines += ["", f"**Review requested from:** {', '.join(a.notify)}"]
     lines.append("")
     if a.hits:
         lines += ["### Why", "", "| Verdict | Rule | Table | Reason |", "|---|---|---|---|"]

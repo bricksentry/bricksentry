@@ -162,6 +162,16 @@ def preview(target, sql_text, sql_file, keys, fmt, fail_on, config_path):
 
 
 @main.command()
+@click.option("--report", "report_path", type=click.Path(), default=None,
+              help="Also write the final pull-request comment (markdown) to this file.")
+def demo(report_path):
+    """Run the agent safety loop on a local 20,000-row example (needs bricksentry[duckdb])."""
+    from bricksentry.demo import run_demo
+
+    run_demo(report_path)
+
+
+@main.command()
 @click.argument("table")
 @config_opt
 def rollback(table, config_path):

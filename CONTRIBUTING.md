@@ -16,7 +16,7 @@ cd bricksentry
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest -q
-python examples/demo/agent_loop_demo.py
+bricksentry demo
 ```
 
 The tests run against DuckDB, so you don't need a Databricks workspace. The Databricks backend is tested against a mocked SDK client; if your change touches it, please say in the pull request whether you also tried it on a real workspace.

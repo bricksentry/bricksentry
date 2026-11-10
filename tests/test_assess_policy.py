@@ -59,6 +59,8 @@ def test_markdown_report(sentry, backend):
     assert MARKER in md
     assert "Needs human review" in md
     assert "Blast radius" in md and "finance-team" in md
+    # the reviewers line is its own paragraph, not merged into the risk-tier line
+    assert "\n\n**Review requested from:**" in md
 
 
 def test_candidate_pattern():
