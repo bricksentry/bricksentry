@@ -44,6 +44,8 @@ dev = ["pytest>=8", "duckdb>=1.0", "mcp>=1.10", "databricks-sdk>=0.30"]
 bricksentry = "bricksentry.cli:entry"
 
 [project.urls]
+Homepage = "https://bricksentry.org"
+Documentation = "https://bricksentry.org/docs"
 Source = "https://github.com/bricksentry/bricksentry"
 Issues = "https://github.com/bricksentry/bricksentry/issues"
 Changelog = "https://github.com/bricksentry/bricksentry/blob/main/CHANGELOG.md"

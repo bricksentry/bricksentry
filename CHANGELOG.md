@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Project links (source, issues, changelog) in package metadata.
+- Project links (website, docs, source, issues, changelog) in package metadata.
 - CI on Python 3.10 to 3.13, and release automation through PyPI Trusted Publishing.
 - CONTRIBUTING, SECURITY and issue templates.
 

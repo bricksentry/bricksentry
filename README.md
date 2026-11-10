@@ -4,6 +4,8 @@
 
 **Change-safety for Databricks pipelines and the AI agents that edit them.**
 
+**Website and docs: [bricksentry.org](https://bricksentry.org)**
+
 Before a change reaches production, bricksentry answers three questions, in a
 pull-request comment for humans and in structured JSON for agents:
 
