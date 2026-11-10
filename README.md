@@ -1,5 +1,7 @@
 # bricksentry
 
+[![PyPI](https://img.shields.io/pypi/v/bricksentry)](https://pypi.org/project/bricksentry/) [![Python](https://img.shields.io/pypi/pyversions/bricksentry)](https://pypi.org/project/bricksentry/) [![CI](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml/badge.svg)](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 **Change-safety for Databricks pipelines and the AI agents that edit them.**
 
 Before a change reaches production, bricksentry answers three questions, in a
@@ -86,7 +88,16 @@ Exit codes: `0` below `--fail-on`, `1` at or above it, `2` for configuration err
     DATABRICKS_WAREHOUSE_ID: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
 ```
 
-It detects changed tables from the files in the PR and posts or updates one PR comment. Check out with `fetch-depth: 0` and give the job `pull-requests: write` permission. The source repository also ships a composite `action.yml` that wraps these steps.
+It detects changed tables from the files in the PR and posts or updates one PR comment. Check out with `fetch-depth: 0` and give the job `pull-requests: write` permission.
+
+Or use the bundled GitHub Action, which also writes the report to the job summary:
+
+```yaml
+- uses: bricksentry/bricksentry@v0.1.0
+  with:
+    config: bricksentry.yml
+    fail-on: needs_human
+```
 
 ## Python API
 
@@ -141,6 +152,10 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 
 Asset Bundle parsing for automatic table detection · column-level blast radius from `system.access.column_lineage` · an aggregate diff for keyless tables · Lakeflow expectations in the verdict · `bricksentry watch` for scheduled drift checks · a Databricks App UI.
 
+## Contributing
+
+Bug reports from real pipelines help the most. See [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md) for reporting vulnerabilities privately.
+
 ## License
 
-Apache-2.0
+Apache-2.0. Created and maintained by Brahma.

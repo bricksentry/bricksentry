@@ -1,0 +1,35 @@
+name: Bug report
+description: Something didn't work, or a verdict looked wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and output
+      render: shell
+  - type: textarea
+    id: config
+    attributes:
+      label: bricksentry.yml / policy.yml (remove anything private)
+      render: yaml
+  - type: input
+    id: version
+    attributes:
+      label: bricksentry version
+      placeholder: "bricksentry --version"
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options: [databricks, duckdb]
+    validations:
+      required: true
