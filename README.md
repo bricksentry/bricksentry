@@ -173,4 +173,4 @@ Bug reports from real pipelines help the most. See [CONTRIBUTING.md](CONTRIBUTIN
 
 ## License
 
-Apache-2.0. Created and maintained by Brahma.
+Apache-2.0. Created and maintained by Brahma - Databricks Champion.
