@@ -6,7 +6,7 @@
 
 Change-safety for Databricks pipelines and the AI agents that edit them: know what a change does to your data before it ships.
 
-**[Try it in 30 seconds](#try-it-in-30-seconds-no-databricks-needed)** · **[Run the Databricks notebook](#run-it-in-your-databricks-workspace)** · **[Docs: bricksentry.org](https://bricksentry.org)**
+**[Try it in 30 seconds](#try-it-in-30-seconds-no-databricks-needed)** · **[Run the Databricks notebook](#run-it-in-your-databricks-workspace)** · **[Docs: bricksentry.org](https://bricksentry.org)** · **[LinkedIn](https://www.linkedin.com/company/bricksentry-org/)**
 
 Built by Brahmareddy, Databricks Champion. Open source under Apache-2.0.
 
