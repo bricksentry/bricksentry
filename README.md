@@ -17,6 +17,18 @@ An AI agent changes a 20,000-row revenue table. bricksentry previews its DELETE 
 
 ![bricksentry demo: an agent's change is previewed, blocked for duplicate keys, then routed to the table owners](https://raw.githubusercontent.com/bricksentry/bricksentry/main/docs/images/demo.png)
 
+### Or run it in your Databricks workspace
+
+The [quickstart notebook](examples/databricks/bricksentry_quickstart.py) creates a small demo table in a schema you choose and runs the same loop on Databricks: Unity Catalog blast radius, a real `RESTORE` rollback plan, a preview on a shallow clone, a blocked pull request and the fix. Then it checks one of your own tables, read-only, and cleans up after itself.
+
+In Databricks: **Workspace → Import → URL**, and paste:
+
+```
+https://raw.githubusercontent.com/bricksentry/bricksentry/main/examples/databricks/bricksentry_quickstart.py
+```
+
+You need a SQL warehouse, `CREATE TABLE` on the schema you pick, and `SELECT` on `system.access.table_lineage` for the blast radius. A Jupyter copy is in [`bricksentry_quickstart.ipynb`](examples/databricks/bricksentry_quickstart.ipynb).
+
 ## What it does
 
 Before a change reaches production, bricksentry answers three questions, in a

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Databricks quickstart notebook (`examples/databricks/bricksentry_quickstart.py`, plus an `.ipynb` copy) that runs the full loop on a demo table in your workspace.
+
 ## 0.1.2 (2026-11-10)
 
 - Fix: rows whose key is NULL are now matched null-safely. Before, each such row was counted as both added and removed (found on a real Databricks table with a NULL `state`).
