@@ -222,6 +222,7 @@ notify_owners_on: needs_human
 rules:
   - {name: diff-failed,          when: {diff_error: true},              then: needs_human}
   - {name: duplicate-keys,       when: {duplicate_keys: true},          then: block}
+  - {name: null-keys,            when: {null_keys: true},               then: warn}
   - {name: dropped-column,       when: {column_removed: true},          then: needs_human}
   - {name: type-change,          when: {column_type_changed: true},     then: warn}
   - {name: certified-downstream, when: {downstream_tag: certified},     then: needs_human}

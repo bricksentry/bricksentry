@@ -9,6 +9,9 @@ never from an LLM, so agents and CI get the same answer for the same change.
       - name: duplicate-keys
         when: {duplicate_keys: true}
         then: block
+      - name: new-null-keys
+        when: {null_keys: true}
+        then: warn
       - name: dropped-column
         when: {column_removed: true}
         then: needs_human
@@ -41,6 +44,7 @@ DEFAULT_POLICY: dict[str, Any] = {
     "rules": [
         {"name": "diff-failed", "when": {"diff_error": True}, "then": "needs_human"},
         {"name": "duplicate-keys", "when": {"duplicate_keys": True}, "then": "block"},
+        {"name": "null-keys", "when": {"null_keys": True}, "then": "warn"},
         {"name": "dropped-column", "when": {"column_removed": True}, "then": "needs_human"},
         {"name": "type-change", "when": {"column_type_changed": True}, "then": "warn"},
         {"name": "certified-downstream", "when": {"downstream_tag": "certified"}, "then": "needs_human"},
@@ -57,7 +61,7 @@ KNOWN_CONDITIONS = {
     "table", "tag", "downstream_tag", "downstream_kind", "downstream_count_gt",
     "removed_pct_gt", "added_pct_gt", "changed_pct_gt", "row_count_change_pct_gt",
     "row_count_drop_pct_gt", "column_removed", "column_type_changed", "column_added",
-    "duplicate_keys", "column", "sum_change_pct_gt", "null_increase_gt",
+    "duplicate_keys", "null_keys", "column", "sum_change_pct_gt", "null_increase_gt",
     "any_change", "diff_error",
 }
 
@@ -163,6 +167,12 @@ def _match(
             if dup != bool(val):
                 return False, ""
             reasons.append(f"{diff.duplicate_keys_candidate} duplicate key(s) in candidate (base had {diff.duplicate_keys_base})")
+            continue
+        if cond == "null_keys":
+            new_nulls = diff.null_keys_candidate > diff.null_keys_base
+            if new_nulls != bool(val):
+                return False, ""
+            reasons.append(f"{diff.null_keys_candidate} row(s) with a NULL key in candidate (base had {diff.null_keys_base})")
             continue
         if cond == "column_removed":
             if bool(diff.schema.removed) != bool(val):

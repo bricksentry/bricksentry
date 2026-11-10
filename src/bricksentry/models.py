@@ -85,6 +85,8 @@ class TableDiff:
     columns: list[ColumnChange] = field(default_factory=list)
     duplicate_keys_base: int = 0
     duplicate_keys_candidate: int = 0
+    null_keys_base: int = 0
+    null_keys_candidate: int = 0
     segments: list[Segment] = field(default_factory=list)
     sampled_pct: float | None = None
     error: str | None = None

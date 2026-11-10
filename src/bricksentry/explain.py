@@ -73,6 +73,8 @@ def explain_diff(d: TableDiff) -> str:
 
     if d.duplicate_keys_candidate > d.duplicate_keys_base:
         s += f". WARNING: {_n(d.duplicate_keys_candidate)} duplicate key(s) on {', '.join(d.keys)}"
+    if d.null_keys_candidate:
+        s += f". Note: {_n(d.null_keys_candidate)} row(s) have a NULL key ({', '.join(d.keys)})"
     if d.sampled_pct:
         s += f" (based on a {d.sampled_pct:g}% key sample)"
     return s + "."

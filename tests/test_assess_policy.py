@@ -74,3 +74,14 @@ def test_changed_tables_from_files():
     cfg = Config.from_dict({"tables": {"main.sales.orders": {"keys": ["id"], "paths": ["src/orders/**", "resources/orders.yml"]}}})
     assert tables_for_files(cfg, ["src/orders/transform.py"]) == ["main.sales.orders"]
     assert tables_for_files(cfg, ["README.md"]) == []
+
+
+def test_new_null_keys_warn(backend):
+    from bricksentry import Sentry
+
+    backend.execute("CREATE TABLE sales_ci.orders AS SELECT * FROM sales.orders")
+    backend.execute("UPDATE sales_ci.orders SET order_id = NULL WHERE order_id = 7")
+    cfg = Config.from_dict({"tables": {"sales.orders": {"keys": ["order_id"]}}, "lineage": {"type": "static"}})
+    a = Sentry(cfg, backend=backend).assess(["sales.orders"])
+    assert "null-keys" in {h.rule for h in a.hits}
+    assert "NULL key" in a.tables[0].summary

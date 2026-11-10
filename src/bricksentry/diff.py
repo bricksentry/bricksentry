@@ -61,13 +61,18 @@ def diff_tables(
     if columns:
         common = [c for c in common if c in columns]
 
+    # A marker column says whether a joined row exists on each side. Testing the key
+    # for NULL instead would count a NULL-key row as both added and removed.
+    present = q("__bs_present")
+
     def side(tbl: str, alias: str) -> str:
         where = f" WHERE {backend.sample_predicate(keys, sample_pct)}" if sample_pct else ""
-        return f"{alias} AS (SELECT * FROM {backend.qualified(tbl)}{where})"
+        return f"{alias} AS (SELECT *, 1 AS {present} FROM {backend.qualified(tbl)}{where})"
 
     ctes = f"WITH {side(base, 'b_src')}, {side(candidate, 'c_src')}"
-    join_on = " AND ".join(f"b.{q(k)} = c.{q(k)}" for k in keys)
-    k0 = q(keys[0])
+    # Null-safe key match: a NULL key in production matches a NULL key in the candidate.
+    join_on = " AND ".join(f"b.{q(k)} IS NOT DISTINCT FROM c.{q(k)}" for k in keys)
+    in_b, in_c = f"b.{present} IS NOT NULL", f"c.{present} IS NOT NULL"
 
     def cmp(col: str) -> str:
         bc, cc = f"b.{q(col)}", f"c.{q(col)}"
@@ -76,12 +81,12 @@ def diff_tables(
             bc, cc = f"CAST({bc} AS {st})", f"CAST({cc} AS {st})"
         return f"{bc} IS DISTINCT FROM {cc}"
 
-    both = f"b.{k0} IS NOT NULL AND c.{k0} IS NOT NULL"
+    both = f"{in_b} AND {in_c}"
     any_diff = " OR ".join(f"({cmp(c)})" for c in common) or "FALSE"
 
     selects = [
-        f"SUM(CASE WHEN b.{k0} IS NULL THEN 1 ELSE 0 END) AS added_rows",
-        f"SUM(CASE WHEN c.{k0} IS NULL THEN 1 ELSE 0 END) AS removed_rows",
+        f"SUM(CASE WHEN NOT ({in_b}) THEN 1 ELSE 0 END) AS added_rows",
+        f"SUM(CASE WHEN NOT ({in_c}) THEN 1 ELSE 0 END) AS removed_rows",
         f"SUM(CASE WHEN {both} AND ({any_diff}) THEN 1 ELSE 0 END) AS changed_rows",
         f"SUM(CASE WHEN {both} AND NOT ({any_diff}) THEN 1 ELSE 0 END) AS unchanged_rows",
     ]
@@ -96,7 +101,8 @@ def diff_tables(
 
     # Row counts, nulls, numeric sums per side.
     def profile(tbl_cte: str, cols: dict[str, str]) -> dict:
-        parts = ["COUNT(*) AS n_rows"]
+        any_null_key = " OR ".join(f"{q(k)} IS NULL" for k in keys)
+        parts = ["COUNT(*) AS n_rows", f"SUM(CASE WHEN {any_null_key} THEN 1 ELSE 0 END) AS null_keys"]
         for i, col in enumerate(common):
             parts.append(f"SUM(CASE WHEN {q(col)} IS NULL THEN 1 ELSE 0 END) AS nul_{i}")
             if backend.is_numeric(cols[col]):
@@ -147,7 +153,7 @@ def diff_tables(
             continue
         b_seg = f"b.{q(seg)}" if seg in b_cols else "NULL"
         c_seg = f"c.{q(seg)}" if seg in c_cols else "NULL"
-        affected = f"(b.{k0} IS NULL OR c.{k0} IS NULL OR ({any_diff}))"
+        affected = f"(NOT ({in_b}) OR NOT ({in_c}) OR ({any_diff}))"
         sql = (
             f"{ctes} SELECT COALESCE({c_seg}, {b_seg}) AS seg_value, COUNT(*) AS n "
             f"FROM b_src b FULL OUTER JOIN c_src c ON {join_on} WHERE {affected} "
@@ -171,6 +177,8 @@ def diff_tables(
         columns=col_changes,
         duplicate_keys_base=dupes("b_src"),
         duplicate_keys_candidate=dupes("c_src"),
+        null_keys_base=int(pb.get("null_keys") or 0),
+        null_keys_candidate=int(pc.get("null_keys") or 0),
         segments=segments,
         sampled_pct=sample_pct,
     )

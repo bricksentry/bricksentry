@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2 (2026-11-10)
+
+- Fix: rows whose key is NULL are now matched null-safely. Before, each such row was counted as both added and removed (found on a real Databricks table with a NULL `state`).
+- New `null_keys` policy condition and default `null-keys` rule (warn) when a change introduces rows with a NULL key; summaries mention NULL keys.
+
 ## 0.1.1 (2026-11-10)
 
 - New `bricksentry demo` command: the full agent safety loop on a local 20,000-row example in about 30 seconds (`pip install "bricksentry[duckdb]"`). `--report FILE` also writes the pull-request comment.

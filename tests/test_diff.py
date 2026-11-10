@@ -73,3 +73,26 @@ def test_composite_keys(backend):
     backend.execute("UPDATE sales_ci.orders SET status = 'late' WHERE order_id = 7")
     d = diff_tables(backend, "sales.orders", "sales_ci.orders", ["order_id", "region"])
     assert d.changed_rows == 1
+
+
+def test_null_keys_are_matched_not_double_counted(backend):
+    # Regression: a row whose key is NULL used to count as both added and removed.
+    backend.execute("CREATE SCHEMA s")
+    backend.execute(
+        "CREATE TABLE s.base AS SELECT * FROM (VALUES (NULL, 1.0), ('CA', 2.0), ('TX', 3.0), ('NY', 4.0)) t(state, v)"
+    )
+    # Unchanged NULL-key row: must be matched, not reported as added + removed.
+    backend.execute("CREATE TABLE s.same AS SELECT * FROM s.base")
+    d = diff_tables(backend, "s.base", "s.same", ["state"])
+    assert (d.added_rows, d.removed_rows, d.changed_rows) == (0, 0, 0)
+    assert d.is_identical and d.null_keys_base == 1
+
+    # NULL-key row changed: one changed row, nothing added or removed.
+    backend.execute("CREATE TABLE s.chg AS SELECT state, CASE WHEN state IS NULL THEN 9.0 ELSE v END AS v FROM s.base")
+    d = diff_tables(backend, "s.base", "s.chg", ["state"])
+    assert (d.added_rows, d.removed_rows, d.changed_rows) == (0, 0, 1)
+
+    # DELETE of three rows including the NULL-key row.
+    backend.execute("CREATE TABLE s.del AS SELECT * FROM s.base WHERE state = 'NY'")
+    d = diff_tables(backend, "s.base", "s.del", ["state"])
+    assert (d.added_rows, d.removed_rows) == (0, 3)
