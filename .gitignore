@@ -7,3 +7,6 @@ build/
 *.duckdb
 bricksentry-report.md
 bricksentry-result.json
+.coverage
+coverage.xml
+.ruff_cache/
