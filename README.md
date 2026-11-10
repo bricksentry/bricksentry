@@ -146,7 +146,7 @@ backend: {type: databricks, warehouse_id: abc123}      # auth: standard Databric
 sandbox_schema: main.bricksentry_sandbox
 candidate_pattern: "{catalog}.{schema}_pr_{pr}.{table}"
 sample_pct: 10
-lineage: {type: databricks, depth: 3, lookback_days: 90}
+lineage: {type: databricks, depth: 3, lookback_days: 90}   # also: exclude, exclude_dropped
 tables:
   main.sales.orders:
     keys: [order_id]

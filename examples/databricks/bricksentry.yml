@@ -18,6 +18,8 @@ lineage:
   type: databricks      # reads system.access.table_lineage + information_schema
   depth: 3
   lookback_days: 90
+  # exclude: ["*__preview_*"]   # name patterns left out of the blast radius (default: preview clones)
+  # exclude_dropped: true         # hide tables lineage remembers but that no longer exist
 
 tables:
   main.sales.orders:

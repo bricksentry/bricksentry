@@ -9,6 +9,7 @@ Lakeflow pipelines, dashboards and SQL queries, not just SQL you can parse.
 
 from __future__ import annotations
 
+import fnmatch
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -102,6 +103,11 @@ class UnityCatalogLineage(LineageProvider):
     Table owners come from ``information_schema.tables`` and tags from
     ``information_schema.table_tags``. All table names are configurable so the
     same code runs against copies of the system tables in tests.
+
+    Lineage history keeps tables that no longer exist, including bricksentry's own
+    ``preview_write`` clones. Those are left out of the blast radius: names matching
+    ``exclude_patterns`` always, and tables that ``information_schema`` reports as
+    gone (only when that lookup succeeds, so missing privileges never hide anything).
     """
 
     def __init__(
@@ -112,6 +118,8 @@ class UnityCatalogLineage(LineageProvider):
         tables_table: str = "system.information_schema.tables",
         tags_table: str = "system.information_schema.table_tags",
         max_nodes: int = 500,
+        exclude_patterns: list[str] | None = None,
+        exclude_dropped: bool = True,
     ):
         self.backend = backend
         self.lookback_days = lookback_days
@@ -119,7 +127,14 @@ class UnityCatalogLineage(LineageProvider):
         self.tables_table = tables_table
         self.tags_table = tags_table
         self.max_nodes = max_nodes
+        self.exclude_patterns = [p.lower() for p in (exclude_patterns if exclude_patterns is not None else DEFAULT_EXCLUDE)]
+        self.exclude_dropped = exclude_dropped
         self._meta_cache: dict[str, tuple[str | None, dict[str, str]]] = {}
+        self._exists: dict[str, bool] = {}  # True / False when information_schema answered; absent if unknown
+
+    def _excluded(self, name: str) -> bool:
+        n = name.lower()
+        return any(fnmatch.fnmatch(n, p) for p in self.exclude_patterns)
 
     def downstream(self, table: str, depth: int = 3) -> list[ImpactNode]:
         out: list[ImpactNode] = []
@@ -142,6 +157,8 @@ class UnityCatalogLineage(LineageProvider):
             for r in rows:
                 src = r.get("src")
                 tgt = r.get("tgt")
+                if tgt and self._excluded(tgt):
+                    continue  # e.g. a preview_write clone: neither it nor the statement that made it is a dependent
                 if tgt and tgt.lower() not in seen_tables:
                     seen_tables.add(tgt.lower())
                     nxt.append(tgt)
@@ -156,6 +173,8 @@ class UnityCatalogLineage(LineageProvider):
             frontier = nxt
         out = out[: self.max_nodes]
         self._attach_meta([n for n in out if n.kind == "table"])
+        if self.exclude_dropped:
+            out = [n for n in out if not (n.kind == "table" and self._exists.get(n.name.lower()) is False)]
         return out
 
     def owner_and_tags(self, table: str) -> tuple[str | None, dict[str, str]]:
@@ -179,11 +198,15 @@ class UnityCatalogLineage(LineageProvider):
             batch = names[i : i + 200]
             in_list = ", ".join(_lit(n.lower()) for n in batch)
             try:
+                found = set()
                 for r in self.backend.query(
                     f"SELECT {full} AS fqn, table_owner FROM {self.tables_table} WHERE {full} IN ({in_list})"
                 ):
+                    found.add(r["fqn"])
                     _, tags = self._meta_cache[r["fqn"]]
                     self._meta_cache[r["fqn"]] = (r.get("table_owner"), tags)
+                for n in batch:
+                    self._exists[n.lower()] = n.lower() in found
             except Exception:
                 pass  # missing privileges on information_schema should not break the check
             try:
@@ -197,6 +220,9 @@ class UnityCatalogLineage(LineageProvider):
                     self._meta_cache[r["fqn"]] = (owner, tags)
             except Exception:
                 pass
+
+
+DEFAULT_EXCLUDE = ["*__preview_*"]  # bricksentry's own preview_write clones
 
 
 def _lit(s: str) -> str:
@@ -220,5 +246,7 @@ def make_lineage(cfg: dict[str, Any] | None, backend: Backend) -> LineageProvide
             tables_table=cfg.get("tables_table", "system.information_schema.tables"),
             tags_table=cfg.get("tags_table", "system.information_schema.table_tags"),
             max_nodes=int(cfg.get("max_nodes", 500)),
+            exclude_patterns=cfg.get("exclude"),
+            exclude_dropped=bool(cfg.get("exclude_dropped", True)),
         )
     raise ValueError(f"Unknown lineage type {kind!r}")

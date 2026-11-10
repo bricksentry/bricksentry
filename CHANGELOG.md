@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 (2026-11-10)
 
+- Blast radius no longer lists bricksentry's own `preview_write` clones, or tables that Unity Catalog lineage remembers but that no longer exist (when `information_schema` can confirm it). Before, every preview added a stale downstream entry. New lineage settings: `exclude` (name patterns, default `["*__preview_*"]`) and `exclude_dropped` (default true).
 - Databricks quickstart notebook (`examples/databricks/bricksentry_quickstart.py`, plus an `.ipynb` copy) that runs the full loop on a demo table in your workspace.
 
 ## 0.1.2 (2026-11-10)

@@ -57,7 +57,8 @@ def test_uc_lineage_walk(backend):
     )
     backend.execute(
         """CREATE TABLE sys.tables AS SELECT * FROM (VALUES
-          ('main','sales','daily_revenue','finance-team')) t(table_catalog, table_schema, table_name, table_owner)"""
+          ('main','sales','daily_revenue','finance-team'),
+          ('main','finance','close','finance-team')) t(table_catalog, table_schema, table_name, table_owner)"""
     )
     backend.execute(
         """CREATE TABLE sys.table_tags AS SELECT * FROM (VALUES
@@ -75,3 +76,51 @@ def test_uc_lineage_walk(backend):
     assert not any("stale" in n.name for n in nodes)  # outside lookback window
     rev = next(n for n in nodes if n.name == "main.sales.daily_revenue")
     assert rev.owner == "finance-team" and "certified" in rev.tags
+
+
+def _lineage_fixture(backend, with_tables_table=True):
+    backend.execute("CREATE SCHEMA IF NOT EXISTS sys2")
+    backend.execute(
+        """
+        CREATE OR REPLACE TABLE sys2.table_lineage AS SELECT * FROM (VALUES
+          ('main.sales.orders', 'main.sales.daily_revenue', 'JOB', '111', current_date),
+          ('main.sales.orders', 'main.sales.orders__preview_ab12cd34', 'DBSQL_QUERY', 'q-clone', current_date),
+          ('main.sales.orders', 'main.tmp.bs_test_candidate', 'NOTEBOOK', '222', current_date),
+          ('main.tmp.bs_test_candidate', 'main.tmp.child_of_dropped', 'NOTEBOOK', '222', current_date)
+        ) t(source_table_full_name, target_table_full_name, entity_type, entity_id, event_date)
+        """
+    )
+    backend.execute(
+        """CREATE OR REPLACE TABLE sys2.tables AS SELECT * FROM (VALUES
+          ('main','sales','daily_revenue','finance-team'),
+          ('main','tmp','child_of_dropped','someone')) t(table_catalog, table_schema, table_name, table_owner)"""
+    )
+    backend.execute(
+        "CREATE OR REPLACE TABLE sys2.table_tags AS SELECT * FROM (VALUES ('x','x','x','x', NULL)) "
+        "t(catalog_name, schema_name, table_name, tag_name, tag_value)"
+    )
+    return UnityCatalogLineage(
+        backend,
+        lineage_table="sys2.table_lineage",
+        tables_table="sys2.tables" if with_tables_table else "sys2.no_such_table",
+        tags_table="sys2.table_tags",
+    )
+
+
+def test_uc_lineage_skips_preview_clones_and_dropped_tables(backend):
+    nodes = _lineage_fixture(backend).downstream("main.sales.orders", depth=3)
+    names = {n.name for n in nodes}
+    assert "main.sales.daily_revenue" in names
+    assert not any("__preview_" in n for n in names)            # bricksentry's own clones
+    assert "dbsql_query:q-clone" not in names                    # the statement that made the clone
+    assert "main.tmp.bs_test_candidate" not in names             # dropped scratch table
+    assert "main.tmp.child_of_dropped" in names                  # but what it fed still exists
+    assert "job:111" in names
+
+
+def test_uc_lineage_keeps_tables_when_existence_unknown(backend):
+    # Without access to information_schema, nothing is hidden (except preview clones).
+    nodes = _lineage_fixture(backend, with_tables_table=False).downstream("main.sales.orders", depth=3)
+    names = {n.name for n in nodes}
+    assert "main.tmp.bs_test_candidate" in names
+    assert not any("__preview_" in n for n in names)
