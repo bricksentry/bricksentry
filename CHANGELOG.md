@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 (2026-11-10)
+
+- Clearer MCP tool definitions for agents. Each tool now says when to use it versus its sibling tools and what it returns, and every parameter has a description in the tool schema (for example the `candidates` map format for `assess_change`). No behavior changes.
+
 ## 0.1.4 (2026-11-10)
 
 From a second end-to-end run on Databricks serverless against a 2-million-row table:
