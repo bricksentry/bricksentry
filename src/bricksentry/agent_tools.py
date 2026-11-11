@@ -56,27 +56,42 @@ def _safe(fn):
 def whats_downstream(
     table: Annotated[str, _desc("Fully qualified table name, e.g. main.sales.orders.")],
     depth: Annotated[int, _desc("How many lineage hops to follow downstream (default 3).")] = 3,
+    columns: Annotated[
+        list[str] | None,
+        _desc("Optional columns you plan to change, e.g. ['email']. Adds the downstream columns they feed, "
+              "with their tags, and the tags on these columns."),
+    ] = None,
 ) -> dict[str, Any]:
     """List what depends on a table, so you know the blast radius BEFORE you edit it.
 
     Use this first, when planning a change. It reads Unity Catalog lineage and
     returns every downstream table, job, notebook, pipeline, dashboard and query,
     up to `depth` hops, with owners and tags. Dropped tables are filtered out.
-    Read-only; changes nothing. To check a change you have already made, use
-    assess_change instead.
+    Pass `columns` when you will change specific columns to see the downstream
+    columns they feed (column lineage) and whether any carry tags such as pii or
+    certified. Read-only; changes nothing. To check a change you have already
+    made, use assess_change instead.
 
     Returns {table, owner, tags, count, downstream: [{kind, name, depth, via,
-    owner, tags}]}, or {error} if the table or lineage cannot be read."""
+    owner, tags}]}, plus {column_tags, column_downstream: [{source_column, table,
+    column, depth, tags}]} when `columns` is given, or {error} if the table or
+    lineage cannot be read."""
     s = get_sentry()
     nodes = s.downstream(table, depth)
     owner, tags = s.lineage.owner_and_tags(table)
-    return {
+    out: dict[str, Any] = {
         "table": table,
         "owner": owner,
         "tags": tags,
         "count": len(nodes),
         "downstream": [n.to_dict() for n in nodes],
     }
+    if columns:
+        col_tags = s.lineage.column_tags(table)
+        out["column_tags"] = {c: col_tags[c] for c in columns if col_tags.get(c)}
+        feeds = s.lineage.column_downstream(table, list(columns), int(s.config.lineage.get("column_depth", 2)))
+        out["column_downstream"] = [c.to_dict() for c in feeds]
+    return out
 
 
 @_safe
@@ -103,6 +118,7 @@ def assess_change(
 
     Returns {id, verdict: pass|warn|needs_human|block, risk_tier, safe_to_ship,
     notify, rule_hits, tables: [{table, verdict, summary, diff, downstream,
+    changed_columns, column_tags, column_downstream,
     rollback}]}. Pass `id` to safe_to_ship (and optionally explain_diff)."""
     a = get_sentry().assess(list(tables), candidates=candidates, pr=pr)
     return a.to_dict()

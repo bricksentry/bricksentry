@@ -173,6 +173,20 @@ class ImpactNode:
 
 
 @dataclass
+class ColumnImpact:
+    """A downstream column fed by a changed column, from Unity Catalog column lineage."""
+
+    source_column: str  # the changed column in the assessed table
+    table: str          # downstream table
+    column: str         # downstream column
+    depth: int
+    tags: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class RuleHit:
     rule: str
     verdict: Verdict
@@ -198,6 +212,9 @@ class TableAssessment:
     verdict: Verdict = Verdict.PASS
     hits: list[RuleHit] = field(default_factory=list)
     summary: str = ""
+    changed_columns: list[str] = field(default_factory=list)
+    column_tags: dict[str, dict[str, str]] = field(default_factory=dict)  # tags on this table's changed columns
+    column_downstream: list[ColumnImpact] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -210,6 +227,9 @@ class TableAssessment:
             "rule_hits": [h.to_dict() for h in self.hits],
             "diff": self.diff.to_dict() if self.diff else None,
             "downstream": [n.to_dict() for n in self.downstream],
+            "changed_columns": self.changed_columns,
+            "column_tags": self.column_tags,
+            "column_downstream": [c.to_dict() for c in self.column_downstream],
             "rollback": self.rollback,
         }
 
@@ -225,6 +245,9 @@ class TableAssessment:
             verdict=Verdict(d.get("verdict", "pass")),
             hits=[RuleHit.from_dict(h) for h in d.get("rule_hits") or []],
             summary=d.get("summary", ""),
+            changed_columns=list(d.get("changed_columns") or []),
+            column_tags={k: dict(v) for k, v in (d.get("column_tags") or {}).items()},
+            column_downstream=[ColumnImpact(**c) for c in d.get("column_downstream") or []],
         )
 
 

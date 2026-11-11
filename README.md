@@ -51,7 +51,7 @@ Before a change reaches production, bricksentry answers three questions, in a
 pull-request comment for humans and in structured JSON for agents:
 
 1. **What does it do to the data?** A key-based data diff: added, removed and changed rows, schema changes, per-column changes, numeric totals, duplicate keys, and *where* the change is concentrated ("100% of affected rows are region = APAC").
-2. **Who gets hurt?** The downstream blast radius from Unity Catalog lineage: tables, jobs, notebooks, Lakeflow pipelines, dashboards and queries, with owners and tags.
+2. **Who gets hurt?** The downstream blast radius from Unity Catalog lineage: tables, jobs, notebooks, Lakeflow pipelines, dashboards and queries, with owners and tags. Down to the column: which columns the change touched, whether they are tagged (for example `pii`), and which downstream columns they feed.
 3. **Is it safe, and how do I undo it?** A deterministic policy verdict (`pass` · `warn` · `needs_human` · `block`) and the exact `RESTORE TABLE … VERSION AS OF n` rollback.
 
 For your Databricks workspace:
@@ -97,7 +97,7 @@ bricksentry is listed in the [official MCP Registry](https://registry.modelconte
 
 | Tool | What the agent gets |
 |---|---|
-| `whats_downstream(table, depth)` | Downstream assets with owners and tags. Call it *before* editing. |
+| `whats_downstream(table, depth, columns?)` | Downstream assets with owners and tags. Call it *before* editing. Pass the columns you'll change to see the downstream columns they feed and their tags. |
 | `rollback_plan(table)` | The restore SQL. Capture it *before* changing anything. |
 | `preview_write(sql, target, keys?)` | Runs one write against a **disposable shallow clone**, never production, and returns the diff plus verdict. |
 | `assess_change(tables, candidates?, pr?)` | Diffs prod vs. the candidate built by your change, plus lineage and policy. Returns a verdict and an `id`. |
@@ -169,7 +169,7 @@ Check out with `fetch-depth: 0` and give the job `pull-requests: write` permissi
 Or use the bundled GitHub Action, which also writes the report to the job summary:
 
 ```yaml
-- uses: bricksentry/bricksentry@v0.1.11
+- uses: bricksentry/bricksentry@v0.1.12
   with:
     config: bricksentry.yml
     fail-on: needs_human
@@ -194,7 +194,7 @@ jobs:
           fetch-depth: 0
       # Build this PR's version of your pipeline into a per-PR schema first,
       # for example: databricks bundle deploy -t ci && databricks bundle run -t ci
-      - uses: bricksentry/bricksentry@v0.1.11
+      - uses: bricksentry/bricksentry@v0.1.12
         with:
           config: bricksentry.yml
           fail-on: needs_human
@@ -256,7 +256,7 @@ sandbox_schema: main.bricksentry_sandbox
 candidate_pattern: "{catalog}.{schema}_pr_{pr}.{table}"
 sample_pct: 10                                         # sample_guard re-checks the whole table (on by default)
 assessment_store: ~/.bricksentry/assessments           # or false to keep assessments in memory
-lineage: {type: databricks, depth: 3, lookback_days: 90}   # also: exclude, exclude_dropped
+lineage: {type: databricks, depth: 3, lookback_days: 90, column_depth: 2}   # also: exclude, exclude_dropped
 tables:
   main.sales.orders:
     keys: [order_id]
@@ -264,6 +264,23 @@ tables:
     measures: [amount, quantity]   # totals worth checking (see below)
     paths: ["src/pipelines/orders/**", "resources/orders_job.yml"]
 policy: policy.yml            # or builtin:<template>, see "Policy templates" below
+```
+
+**Without Unity Catalog** (local DuckDB work, tests, or other platforms), give the lineage in the config instead. Edges map a table to what reads from it; column edges and tags are optional:
+
+```yaml
+lineage:
+  type: static
+  edges:
+    main.sales.orders: [main.sales.daily_revenue, "dashboard:Revenue Overview", "job:finance_close"]
+  owners:
+    main.sales.daily_revenue: finance-team
+  tags:
+    main.sales.daily_revenue: {certified: "true"}
+  column_edges:                       # "table.column" -> downstream "table.column"s
+    main.sales.orders.amount: [main.sales.daily_revenue.revenue]
+  column_tags:                        # table -> column -> tags
+    main.sales.orders: {customer_email: {pii: ""}}
 ```
 
 Typos are caught: an unknown key such as `sample_pc` prints a warning that names the right one (`did you mean 'sample_pct'?`) instead of being silently ignored.
@@ -318,7 +335,9 @@ Use one directly with `policy: builtin:finance`, or write an editable copy with 
 
 ### Policy conditions
 
-`table` (glob) · `tag` · `downstream_tag` · `downstream_kind` · `downstream_count_gt` · `removed_pct_gt` · `added_pct_gt` · `changed_pct_gt` · `row_count_change_pct_gt` · `row_count_drop_pct_gt` · `column_removed` · `column_added` · `column_type_changed` · `duplicate_keys` · `null_keys` · `sum_change_pct_gt` / `null_increase_gt` (optionally with `column`) · `any_change` · `diff_error` · `lineage_error`
+`table` (glob) · `tag` · `downstream_tag` · `downstream_kind` · `downstream_count_gt` · `removed_pct_gt` · `added_pct_gt` · `changed_pct_gt` · `row_count_change_pct_gt` · `row_count_drop_pct_gt` · `column_removed` · `column_added` · `column_type_changed` · `duplicate_keys` · `null_keys` · `sum_change_pct_gt` / `null_increase_gt` (optionally with `column`) · `changed_column` (glob) · `changed_column_tag` · `downstream_column_tag` · `any_change` · `diff_error` · `lineage_error`
+
+**Column conditions** look only at the columns the change touched (changed values, new NULLs, dropped or retyped): `changed_column_tag: pii` matches when one of them is tagged `pii` in Unity Catalog, and `downstream_column_tag: certified` when one of them feeds a column tagged `certified`, following `system.access.column_lineage` up to `lineage.column_depth` hops (default 2; `0` turns it off). The default policy asks a human when a `pii` column changes; `strict`, `agent-safe` and `certified` also flag changes that feed certified columns.
 
 All conditions in a `when` must hold. The most severe matching rule sets the verdict. Unknown conditions are rejected at load time, so a typo can't silently disable a rule.
 
@@ -326,12 +345,12 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 
 - `CAN USE` on a SQL warehouse.
 - `SELECT` on the tables you assess and their candidates.
-- `SELECT` on `system.access.table_lineage`, plus `system.information_schema` for owners and tags. Without lineage access bricksentry still diffs, and adds a `lineage-unavailable` warning (blast radius unknown) instead of guessing.
+- `SELECT` on `system.access.table_lineage` (and `system.access.column_lineage` for column-level impact), plus `system.information_schema` for owners, table tags and column tags. Without lineage access bricksentry still diffs, and adds a `lineage-unavailable` warning (blast radius unknown) instead of guessing.
 - `CREATE TABLE` on `sandbox_schema`, for `preview_write`.
 
 ## Known limits (v0.1.x)
 
-- **Lineage is recorded at runtime.** Brand-new tables have no downstream history yet. Unity Catalog doesn't capture RDD operations, and UDFs hide column-level mapping.
+- **Lineage is recorded at runtime.** Brand-new tables have no downstream history yet. Unity Catalog doesn't capture RDD operations, and UDFs hide column-level mapping; column lineage records source-to-target derivations, so a column used only in a filter or join may not appear.
 - **Keys are required.** Tables without a stable key can't be diffed row by row yet (an aggregate-profile mode is planned).
 - **Changed-table detection uses path globs** from config. It doesn't parse Asset Bundles yet.
 - **Validated on one Databricks workspace so far** (serverless, November 2026, on a 2-million-row table with 0.1.4): lineage, Delta rollback plans, previews on shallow clones, every verdict level, and the sampling guard catching a single changed row. The automated tests use DuckDB and a mocked SDK, so please [open an issue](https://github.com/bricksentry/bricksentry/issues) if something behaves differently on yours.
@@ -340,7 +359,7 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 
 **Top priority: validation across more workspaces.** Classic and serverless compute, AWS, Azure and GCP, and workspaces with restricted system-table access. If you run the quickstart notebook, please [share what you see](https://github.com/bricksentry/bricksentry/issues), whether it works or not.
 
-Next: dbt support, so dbt models on Databricks get the same diff, blast radius and verdict (planned for 0.2) · Asset Bundle parsing for automatic table detection · column-level blast radius from `system.access.column_lineage` · an aggregate diff for keyless tables · Lakeflow expectations in the verdict · `bricksentry watch` for scheduled drift checks · a Databricks App UI.
+Next: dbt support, so dbt models on Databricks get the same diff, blast radius and verdict (planned for 0.2) · Asset Bundle parsing for automatic table detection · an aggregate diff for keyless tables · Lakeflow expectations in the verdict · `bricksentry watch` for scheduled drift checks · a Databricks App UI.
 
 ## Contributing
 

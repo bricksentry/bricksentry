@@ -77,6 +77,21 @@ def _table_section(t: TableAssessment, max_downstream: int) -> list[str]:
         if len(t.downstream) > max_downstream:
             out.append(f"| … | | {len(t.downstream) - max_downstream} more | | |")
         out += ["", "</details>", ""]
+    tagged = [c for c in t.changed_columns if t.column_tags.get(c)]
+    if tagged or t.column_downstream:
+        out += [f"<details><summary>Column impact: {len(t.changed_columns)} changed column(s), "
+                f"{len(t.column_downstream)} downstream column(s)</summary>", ""]
+        if tagged:
+            out += ["**Tagged columns changed:** " + ", ".join(
+                f"`{c}` ({', '.join(f'{k}={v}' if v else k for k, v in t.column_tags[c].items())})" for c in tagged), ""]
+        if t.column_downstream:
+            out += ["| Changed column | Feeds | Depth | Tags |", "|---|---|---:|---|"]
+            for c in sorted(t.column_downstream, key=lambda c: (c.depth, c.table, c.column))[:max_downstream]:
+                tags = ", ".join(f"{k}={v}" if v else k for k, v in c.tags.items()) or "–"
+                out.append(f"| `{c.source_column}` | `{c.table}.{c.column}` | {c.depth} | {tags} |")
+            if len(t.column_downstream) > max_downstream:
+                out.append(f"| … | {len(t.column_downstream) - max_downstream} more | | |")
+        out += ["", "</details>", ""]
     if t.rollback and t.rollback.startswith("RESTORE"):
         out += ["**Rollback:**", "```sql", t.rollback, "```", ""]
     elif t.rollback:

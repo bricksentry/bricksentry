@@ -12,6 +12,7 @@ GRANT SELECT ON SCHEMA main.sales TO `<app-sp>`;
 GRANT USE CATALOG ON CATALOG system TO `<app-sp>`;
 GRANT USE SCHEMA ON SCHEMA system.access TO `<app-sp>`;
 GRANT SELECT ON TABLE system.access.table_lineage TO `<app-sp>`;
+GRANT SELECT ON TABLE system.access.column_lineage TO `<app-sp>`;   -- column-level impact
 
 -- Only if you remove --read-only from app.yaml: previews run on shallow clones here.
 -- CREATE SCHEMA IF NOT EXISTS main.bricksentry_sandbox;

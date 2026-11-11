@@ -98,3 +98,19 @@ def explain_impact(table: str, nodes: list[ImpactNode]) -> str:
     if owners:
         s += f"; owners: {', '.join(owners[:5])}"
     return s + "."
+
+
+def explain_columns(cols, note: str | None = None) -> str:
+    """One sentence on column-level facts, or "" when there's nothing to say.
+    ``cols`` is a policy.ColumnContext."""
+    parts = []
+    tagged = [f"{c} ({', '.join(cols.tags[c])})" for c in cols.changed if cols.tags.get(c)]
+    if tagged:
+        parts.append("Tagged columns changed: " + ", ".join(tagged[:5]))
+    if cols.downstream:
+        shown = ", ".join(f"{d.table}.{d.column}" for d in cols.downstream[:3])
+        more = f" and {len(cols.downstream) - 3} more" if len(cols.downstream) > 3 else ""
+        parts.append(f"Changed columns feed {len(cols.downstream)} downstream column(s): {shown}{more}")
+    if note:
+        parts.append(note[:1].upper() + note[1:])
+    return (" " + ". ".join(parts) + ".") if parts else ""

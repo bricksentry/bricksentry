@@ -268,6 +268,7 @@ rules:
   - {name: type-change,          when: {column_type_changed: true},     then: warn}
   - {name: certified-downstream, when: {downstream_tag: certified},     then: needs_human}
   - {name: pii-table,            when: {tag: pii},                      then: needs_human}
+  - {name: pii-column-changed,   when: {changed_column_tag: pii},       then: needs_human}
   - {name: row-loss,             when: {removed_pct_gt: 1},             then: needs_human}
   - {name: many-rows-changed,    when: {changed_pct_gt: 10},            then: warn}
   - {name: numeric-total-moved,  when: {sum_change_pct_gt: 5},          then: warn}

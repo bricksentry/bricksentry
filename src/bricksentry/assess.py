@@ -10,10 +10,10 @@ from typing import Any
 from bricksentry.backends.base import Backend, make_backend
 from bricksentry.config import Config
 from bricksentry.diff import diff_tables
-from bricksentry.explain import explain_diff, explain_impact
+from bricksentry.explain import explain_columns, explain_diff, explain_impact
 from bricksentry.lineage import LineageProvider, make_lineage
 from bricksentry.models import Assessment, ImpactNode, TableAssessment, TableDiff, Verdict
-from bricksentry.policy import Policy
+from bricksentry.policy import ColumnContext, Policy
 from bricksentry.preview import rewrite_for_preview, sandbox_name
 
 
@@ -104,13 +104,14 @@ class Sentry:
                 lineage_err = _first_line(e)
             owner, tags = self.lineage.owner_and_tags(table)
             measures = self.config.spec(table).measures
+            cols, col_note = self._column_context(table, diff)
             verdict, hits = self.policy.evaluate(
-                table, diff, nodes, tags, diff_error=err, measures=measures, lineage_error=lineage_err
+                table, diff, nodes, tags, diff_error=err, measures=measures, lineage_error=lineage_err, columns=cols
             )
             summary = (explain_diff(diff, measures) if diff else f"{table}: diff unavailable ({err}).") + " " + (
                 f"{table}: blast radius unknown, lineage lookup failed ({lineage_err})."
                 if lineage_err else explain_impact(table, nodes)
-            )
+            ) + explain_columns(cols, col_note)
             ta = TableAssessment(
                 table=table,
                 diff=diff,
@@ -121,6 +122,9 @@ class Sentry:
                 verdict=verdict,
                 hits=hits,
                 summary=summary,
+                changed_columns=cols.changed,
+                column_tags={c: cols.tags[c] for c in cols.changed if cols.tags.get(c)},
+                column_downstream=cols.downstream,
             )
             results.append(ta)
             if verdict.rank >= self.policy.notify_on.rank:
@@ -138,6 +142,27 @@ class Sentry:
         self._assessments[a.id] = a
         self._save(a)
         return a
+
+    def _column_context(self, table: str, diff: TableDiff | None) -> tuple[ColumnContext, str | None]:
+        """Which columns changed, their tags, and the downstream columns they feed.
+        Lookups that fail leave that part empty and return a one-line note."""
+        changed = changed_columns(diff)
+        if not changed:
+            return ColumnContext(), None
+        notes: list[str] = []
+        col_tags: dict[str, dict[str, str]] = {}
+        feeds: list = []
+        try:
+            col_tags = self.lineage.column_tags(table)
+        except Exception as e:  # e.g. no access to information_schema.column_tags
+            notes.append(f"column tags unavailable ({_first_line(e)})")
+        try:
+            depth = int(self.config.lineage.get("column_depth", 2))
+            if depth > 0:
+                feeds = self.lineage.column_downstream(table, changed, depth)
+        except Exception as e:  # e.g. no SELECT on system.access.column_lineage
+            notes.append(f"column lineage unavailable ({_first_line(e)})")
+        return ColumnContext(changed, col_tags, feeds), "; ".join(notes) or None
 
     # --- saved assessments -------------------------------------------------
     def _save(self, a: Assessment) -> None:
@@ -216,3 +241,17 @@ def _first_line(e: Exception, limit: int = 200) -> str:
     """A short, single-line error for verdict reasons and alerts."""
     text = (str(e).strip().splitlines() or [type(e).__name__])[0]
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def changed_columns(diff: TableDiff | None) -> list[str]:
+    """Columns a change touched: changed values, dropped or retyped, or new NULLs."""
+    if diff is None or diff.error:
+        return []
+    out: list[str] = []
+    for c in diff.columns:
+        if c.changed_rows or (
+            c.base_nulls is not None and c.candidate_nulls is not None and c.candidate_nulls > c.base_nulls
+        ):
+            out.append(c.column)
+    out += list(diff.schema.removed) + list(diff.schema.type_changed)
+    return list(dict.fromkeys(out))

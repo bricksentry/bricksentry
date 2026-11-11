@@ -48,6 +48,7 @@ NOTIFY_KEYS = {"on", "slack_webhook", "teams_webhook", "mentions", "run_url"}
 LINEAGE_KEYS = {
     "type", "depth", "lookback_days", "lineage_table", "tables_table", "tags_table", "max_nodes",
     "exclude", "exclude_dropped", "edges", "owners", "tags",
+    "column_depth", "column_lineage_table", "column_tags_table", "column_edges", "column_tags",
 }
 
 

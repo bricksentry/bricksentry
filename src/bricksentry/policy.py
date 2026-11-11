@@ -27,6 +27,12 @@ never from an LLM, so agents and CI get the same answer for the same change.
       - name: wide-blast-radius
         when: {downstream_count_gt: 25}
         then: warn
+      - name: pii-column-changed       # a changed column is tagged pii in Unity Catalog
+        when: {changed_column_tag: pii}
+        then: needs_human
+      - name: certified-column-feed    # a changed column feeds a column tagged certified
+        when: {downstream_column_tag: certified}
+        then: needs_human
 
 All conditions inside one ``when`` must hold (AND). Use several rules for OR.
 """
@@ -37,7 +43,7 @@ import fnmatch
 from typing import Any
 
 from bricksentry.measures import is_measure
-from bricksentry.models import ImpactNode, RuleHit, TableDiff, Verdict
+from bricksentry.models import ColumnImpact, ImpactNode, RuleHit, TableDiff, Verdict
 
 DEFAULT_POLICY: dict[str, Any] = {
     "default": "pass",
@@ -51,6 +57,7 @@ DEFAULT_POLICY: dict[str, Any] = {
         {"name": "type-change", "when": {"column_type_changed": True}, "then": "warn"},
         {"name": "certified-downstream", "when": {"downstream_tag": "certified"}, "then": "needs_human"},
         {"name": "pii-table", "when": {"tag": "pii"}, "then": "needs_human"},
+        {"name": "pii-column-changed", "when": {"changed_column_tag": "pii"}, "then": "needs_human"},
         {"name": "row-loss", "when": {"removed_pct_gt": 1}, "then": "needs_human"},
         {"name": "many-rows-changed", "when": {"changed_pct_gt": 10}, "then": "warn"},
         {"name": "numeric-total-moved", "when": {"sum_change_pct_gt": 5}, "then": "warn"},
@@ -65,11 +72,33 @@ KNOWN_CONDITIONS = {
     "row_count_drop_pct_gt", "column_removed", "column_type_changed", "column_added",
     "duplicate_keys", "null_keys", "column", "sum_change_pct_gt", "null_increase_gt",
     "any_change", "diff_error", "lineage_error",
+    "changed_column", "changed_column_tag", "downstream_column_tag",
 }
 
 
 class PolicyError(ValueError):
     pass
+
+
+class ColumnContext:
+    """Column-level facts for one table: which columns the change touched, their
+    Unity Catalog tags, and the downstream columns they feed."""
+
+    def __init__(
+        self,
+        changed: list[str] | None = None,
+        tags: dict[str, dict[str, str]] | None = None,
+        downstream: list[ColumnImpact] | None = None,
+    ):
+        self.changed = changed or []
+        self.tags = tags or {}
+        self.downstream = downstream or []
+
+
+def _tag_label(want: Any) -> str:
+    if isinstance(want, dict):
+        return ", ".join(f"{k}={v}" for k, v in want.items())
+    return str(want)
 
 
 class Policy:
@@ -93,10 +122,12 @@ class Policy:
         diff_error: str | None = None,
         measures: list[str] | str | None = None,
         lineage_error: str | None = None,
+        columns: ColumnContext | None = None,
     ) -> tuple[Verdict, list[RuleHit]]:
         hits: list[RuleHit] = []
         for r in self.rules:
-            ok, reason = _match(r.get("when") or {}, table, diff, downstream, tags, diff_error, measures, lineage_error)
+            ok, reason = _match(r.get("when") or {}, table, diff, downstream, tags, diff_error, measures, lineage_error,
+                                columns or ColumnContext())
             if ok:
                 hits.append(RuleHit(rule=r.get("name", "unnamed"), verdict=Verdict(r.get("then", "warn")), table=table, reason=reason))
         verdict = Verdict.worst([self.default] + [h.verdict for h in hits])
@@ -124,7 +155,9 @@ def _match(
     diff_error: str | None,
     measures: list[str] | str | None = None,
     lineage_error: str | None = None,
+    columns: ColumnContext | None = None,
 ) -> tuple[bool, str]:
+    columns = columns or ColumnContext()
     reasons: list[str] = []
     for cond, val in when.items():
         if cond == "column":
@@ -159,6 +192,26 @@ def _match(
             if not m:
                 return False, ""
             reasons.append(f"{len(m)} downstream {val}(s): {', '.join(m[:3])}")
+            continue
+        if cond == "changed_column":
+            pats = [str(v).lower() for v in (val if isinstance(val, list) else [val])]
+            m = [c for c in columns.changed if any(fnmatch.fnmatch(c.lower(), p) for p in pats)]
+            if not m:
+                return False, ""
+            reasons.append(f"changed column(s): {', '.join(m[:5])}")
+            continue
+        if cond == "changed_column_tag":
+            m = [c for c in columns.changed if _has_tag(columns.tags.get(c, {}), val)]
+            if not m:
+                return False, ""
+            reasons.append(f"changed column(s) tagged {_tag_label(val)}: {', '.join(m[:5])}")
+            continue
+        if cond == "downstream_column_tag":
+            m = [c for c in columns.downstream if _has_tag(c.tags, val)]
+            if not m:
+                return False, ""
+            shown = ", ".join(f"{c.table}.{c.column} (from {c.source_column})" for c in m[:3])
+            reasons.append(f"{len(m)} downstream column(s) tagged {_tag_label(val)}: {shown}")
             continue
         if cond == "downstream_count_gt":
             if len(downstream) <= float(val):

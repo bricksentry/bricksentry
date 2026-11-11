@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.12 (2026-11-11)
+
+- **Column-level signals.** After the diff, bricksentry knows which columns a change touched (changed values, new NULLs, dropped or retyped). It reads their Unity Catalog tags from `information_schema.column_tags`, and follows `system.access.column_lineage` from those columns only, up to `lineage.column_depth` hops (default 2), to the downstream columns they feed. Assessments, summaries and the pull-request report show the changed columns, their tags and the column impact.
+- New policy conditions: `changed_column_tag` (e.g. `pii`), `downstream_column_tag` (e.g. `certified`) and `changed_column` (glob). The default policy now asks a human when a column tagged `pii` changes (`pii-column-changed`); `strict`, `agent-safe` and `certified` also flag changes that feed a certified column (`certified-column-feed`), and `pii` flags changes that feed pii columns.
+- `whats_downstream` takes an optional `columns` list, so an agent can see before editing which downstream columns a column feeds and how they are tagged.
+- Static lineage (`type: static`) supports `column_edges` and `column_tags`; the README now shows a full static lineage example.
+- `python -m bricksentry` runs the CLI, for environments where the console command isn't on the PATH.
+- If column tags or column lineage can't be read, the check still runs and the summary says what was unavailable.
+
 ## 0.1.11 (2026-11-11)
 
 > **Published by hand, without provenance.** GitHub Actions stopped starting jobs in this repository on 2026-11-11 (from about 20:20 UTC), so the release workflow could not run. `bricksentry` 0.1.11 was built from commit `b3d9c32` and uploaded manually with `twine`. That is why PyPI shows "loss of provenance" for this release: attestations are only created by the automated workflow. The 29 files inside the published wheel were compared with an independent build of the same commit and are identical. `bricksentry-mcp` was not published for 0.1.11. The next release goes through the normal workflow again, with provenance.
