@@ -202,6 +202,7 @@ def uc(backend):
       ('main.crm.contacts', 'email', 'main.sandbox.contacts__preview_ab12', 'email', current_date),
       ('main.crm.contacts', 'name', 'main.mart.customers', 'name', current_date),
       ('main.mart.customers', 'email_hash', 'main.gold.kpis', 'reachable', current_date),
+      ('main.mart.customers', 'email_hash', 'main.tmp.bs_test_candidate', 'avg', current_date),
       ('main.crm.contacts', 'email', 'main.old.thing', 'e', current_date - INTERVAL 400 DAY),
       ('main.crm.contacts', 'email', NULL, NULL, current_date)
     ) t(source_table_full_name, source_column_name, target_table_full_name, target_column_name, event_date)""")
@@ -209,8 +210,14 @@ def uc(backend):
       ('main', 'crm', 'contacts', 'email', 'pii', NULL),
       ('main', 'gold', 'kpis', 'reachable', 'certified', 'true')
     ) t(catalog_name, schema_name, table_name, column_name, tag_name, tag_value)""")
+    backend.execute("""CREATE TABLE sysc.tables AS SELECT * FROM (VALUES
+      ('main', 'mart', 'customers', 'data-eng'), ('main', 'gold', 'kpis', 'bi-team')
+    ) t(table_catalog, table_schema, table_name, table_owner)""")  # bs_test_candidate was dropped
+    backend.execute("CREATE TABLE sysc.table_tags (catalog_name VARCHAR, schema_name VARCHAR, table_name VARCHAR, "
+                    "tag_name VARCHAR, tag_value VARCHAR)")
     return UnityCatalogLineage(backend, lookback_days=90, column_lineage_table="sysc.column_lineage",
-                               column_tags_table="sysc.column_tags")
+                               column_tags_table="sysc.column_tags", tables_table="sysc.tables",
+                               tags_table="sysc.table_tags")
 
 
 def test_uc_column_lineage_walk(uc):
@@ -218,7 +225,7 @@ def test_uc_column_lineage_walk(uc):
     assert [(c.source_column, c.table, c.column, c.depth) for c in out] == [
         ("email", "main.mart.customers", "email_hash", 1),
         ("email", "main.gold.kpis", "reachable", 2),
-    ]  # duplicates, preview clones, old events and NULL targets left out; 'name' not followed
+    ]  # duplicates, preview clones, dropped tables, old events and NULL targets left out; 'name' not followed
     assert out[1].tags == {"certified": "true"}
     assert uc.column_tags("main.crm.contacts") == {"email": {"pii": ""}}
 
@@ -242,3 +249,9 @@ def test_uc_refuses_suspicious_column_names(uc):
 def test_python_dash_m_runs_the_cli():
     r = subprocess.run([sys.executable, "-m", "bricksentry", "--version"], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and "bricksentry, version" in r.stdout
+
+
+def test_uc_column_lineage_keeps_tables_when_existence_is_unknown(uc):
+    uc.tables_table = "nope.tables"  # information_schema not readable: never hide anything
+    out = uc.column_downstream("main.crm.contacts", ["email"], depth=2)
+    assert ("main.tmp.bs_test_candidate", "avg") in [(c.table, c.column) for c in out]

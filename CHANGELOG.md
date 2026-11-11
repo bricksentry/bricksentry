@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.13 (2026-11-11)
+
+From the first live test of column lineage on Databricks (the 0.1.12 column features were verified against real `system.access.column_lineage` and column tags):
+
+- Fix: column-level results listed columns of tables that had since been dropped, because lineage history keeps them. They are now left out, the same way the table-level blast radius does it. When existence can't be checked (no access to `information_schema`), they are kept, so missing privileges never hide anything.
+
 ## 0.1.12 (2026-11-11)
 
 - **Column-level signals.** After the diff, bricksentry knows which columns a change touched (changed values, new NULLs, dropped or retyped). It reads their Unity Catalog tags from `information_schema.column_tags`, and follows `system.access.column_lineage` from those columns only, up to `lineage.column_depth` hops (default 2), to the downstream columns they feed. Assessments, summaries and the pull-request report show the changed columns, their tags and the column impact.

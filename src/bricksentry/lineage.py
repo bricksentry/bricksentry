@@ -293,7 +293,9 @@ class UnityCatalogLineage(LineageProvider):
 
     def column_downstream(self, table: str, columns: list[str], depth: int = 2) -> list[ColumnImpact]:
         """Breadth-first over ``system.access.column_lineage``, starting from the changed
-        columns only, one query per level. Raises if the lineage table can't be read."""
+        columns only, one query per level. Preview clones and (when ``exclude_dropped``)
+        dropped tables are left out, as in ``downstream``. Raises if the lineage table
+        can't be read."""
         out: list[ColumnImpact] = []
         origin: dict[str, str] = {f"{table}.{c}".lower(): c for c in columns}
         seen = set(origin)
@@ -321,6 +323,13 @@ class UnityCatalogLineage(LineageProvider):
                 nxt.append(key)
             frontier = nxt
         out = out[: self.max_nodes]
+        if self.exclude_dropped and out:
+            # Same rule as the table-level blast radius: lineage history keeps tables that
+            # were dropped since. Leave those out, but only when information_schema answered.
+            missing = sorted({c.table for c in out if c.table.lower() not in self._meta_cache})
+            if missing:
+                self._load_meta(missing)
+            out = [c for c in out if self._exists.get(c.table.lower()) is not False]
         tables = sorted({c.table for c in out})
         if tables:
             try:
