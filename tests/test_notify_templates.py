@@ -140,3 +140,62 @@ def test_refusals_suggest_a_safe_alternative(sql, hint):
     with pytest.raises(PreviewGuardError) as e:
         rewrite_for_preview(sql, "sales.orders", "sandbox.c1", lambda x: x)
     assert hint in str(e.value)
+
+
+# --- 0.1.7 ------------------------------------------------------------------
+
+
+def test_companion_package_matches_release():
+    import json
+    from pathlib import Path
+
+    import bricksentry
+
+    tomllib = pytest.importorskip("tomllib")  # Python 3.11+
+
+    root = Path(__file__).resolve().parents[1]
+    v = bricksentry.__version__
+    comp = tomllib.load(open(root / "packages/bricksentry-mcp/pyproject.toml", "rb"))["project"]
+    assert comp["version"] == v
+    assert comp["dependencies"] == [f"bricksentry[mcp,databricks]=={v}"]
+    server = json.load(open(root / "server.json"))
+    assert server["version"] == v and server["packages"][0]["version"] == v
+    assert server["packages"][0]["identifier"] == "bricksentry-mcp"
+    marker = f"mcp-name: {server['name']}"
+    assert marker in (root / "packages/bricksentry-mcp/README.md").read_text()
+
+
+def test_mcp_entry_runs_the_mcp_command(monkeypatch):
+    import sys
+
+    from bricksentry import cli
+
+    seen = {}
+    monkeypatch.setattr(sys, "argv", ["bricksentry-mcp", "--transport", "sse"])
+    monkeypatch.setattr(cli, "entry", lambda: seen.setdefault("argv", list(sys.argv)))
+    cli.mcp_entry()
+    assert seen["argv"] == ["bricksentry-mcp", "mcp", "--transport", "sse"]
+
+
+def test_demo_without_duckdb_gives_one_clear_line(monkeypatch):
+    import builtins
+
+    from bricksentry.demo import run_demo
+
+    real_import = builtins.__import__
+
+    def fake(name, *a, **k):
+        if name == "duckdb":
+            raise ImportError("No module named 'duckdb'")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake)
+    with pytest.raises(ImportError, match="pip install") as e:
+        run_demo()
+    assert e.value.__cause__ is None and e.value.__suppress_context__
+
+
+def test_agent_safe_template_is_strict_for_agents():
+    p = get_template("agent-safe")
+    rules = {r["name"]: r["then"] for r in p["rules"]}
+    assert rules["dropped-column"] == "block" and rules["row-loss"] == "needs_human"

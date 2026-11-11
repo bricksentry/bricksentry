@@ -2,7 +2,7 @@
 
 Run:  ``bricksentry mcp``  (stdio)  or  ``bricksentry mcp --transport streamable-http``
 
-Claude Code:  ``claude mcp add bricksentry -- bricksentry mcp --config /path/bricksentry.yml``
+Claude Code:  ``claude mcp add bricksentry -- uvx bricksentry-mcp --config /full/path/bricksentry.yml``
 """
 
 from __future__ import annotations

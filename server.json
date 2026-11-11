@@ -8,17 +8,16 @@
     "source": "github"
   },
   "websiteUrl": "https://bricksentry.org",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "packages": [
     {
       "registryType": "pypi",
-      "identifier": "bricksentry",
-      "version": "0.1.6",
+      "identifier": "bricksentry-mcp",
+      "version": "0.1.7",
       "runtimeHint": "uvx",
-      "packageArguments": [
-        {"type": "positional", "value": "mcp"}
-      ],
-      "transport": {"type": "stdio"},
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
         {
           "name": "BRICKSENTRY_CONFIG",

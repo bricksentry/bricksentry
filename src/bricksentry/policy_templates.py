@@ -51,6 +51,27 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             ],
         },
     },
+    "agent-safe": {
+        "description": "Changes written by AI agents: anything beyond a small, clean change goes to a human before it ships.",
+        "policy": {
+            "default": "pass",
+            "notify_owners_on": "needs_human",
+            "rules": [
+                {"name": "diff-failed", "when": {"diff_error": True}, "then": "block"},
+                {"name": "duplicate-keys", "when": {"duplicate_keys": True}, "then": "block"},
+                {"name": "dropped-column", "when": {"column_removed": True}, "then": "block"},
+                {"name": "null-keys", "when": {"null_keys": True}, "then": "needs_human"},
+                {"name": "type-change", "when": {"column_type_changed": True}, "then": "needs_human"},
+                {"name": "row-loss", "when": {"removed_pct_gt": 0.1}, "then": "needs_human"},
+                {"name": "row-count-drop", "when": {"row_count_drop_pct_gt": 0.1}, "then": "needs_human"},
+                {"name": "many-rows-changed", "when": {"changed_pct_gt": 5}, "then": "needs_human"},
+                {"name": "numeric-total-moved", "when": {"sum_change_pct_gt": 1}, "then": "needs_human"},
+                {"name": "pii-table-changed", "when": {"tag": "pii", "any_change": True}, "then": "needs_human"},
+                {"name": "certified-downstream", "when": {"downstream_tag": "certified", "any_change": True}, "then": "needs_human"},
+                {"name": "wide-blast-radius", "when": {"downstream_count_gt": 10}, "then": "needs_human"},
+            ],
+        },
+    },
     "pii": {
         "description": "Tables holding personal data: any change to a PII table, or feeding one, needs a human.",
         "policy": {

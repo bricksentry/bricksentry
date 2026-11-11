@@ -1,6 +1,6 @@
-# Publishes to PyPI when a version tag (v*) is pushed, using PyPI Trusted Publishing:
+# Publishes bricksentry and bricksentry-mcp to PyPI when a version tag (v*) is pushed, using PyPI Trusted Publishing:
 # no API token is stored anywhere. One-time setup on pypi.org:
-#   Project bricksentry -> Settings -> Publishing -> Add a GitHub publisher
+#   Projects bricksentry and bricksentry-mcp -> Settings -> Publishing -> Add a GitHub publisher
 #   owner: bricksentry  repository: bricksentry  workflow: release.yml  environment: pypi
 name: release
 
@@ -31,9 +31,16 @@ jobs:
           bad = {d["version"], d["packages"][0]["version"]} - {"$VERSION"}
           sys.exit(f"server.json version {bad} does not match $VERSION" if bad else 0)
           PY
+          python - <<PY
+          import sys, tomllib
+          p = tomllib.load(open("packages/bricksentry-mcp/pyproject.toml", "rb"))["project"]
+          ok = p["version"] == "$VERSION" and p["dependencies"] == ["bricksentry[mcp,databricks]==$VERSION"]
+          sys.exit(0 if ok else "packages/bricksentry-mcp version or pin does not match $VERSION")
+          PY
       - run: pip install -e ".[dev]" build twine
       - run: pytest -q
       - run: python -m build
+      - run: python -m build packages/bricksentry-mcp --outdir dist
       - run: twine check --strict dist/*
       - uses: actions/upload-artifact@v4
         with:
@@ -109,9 +116,9 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           for i in $(seq 1 30); do
-            curl -sf "https://pypi.org/pypi/bricksentry/$VERSION/json" >/dev/null && exit 0
+            curl -sf "https://pypi.org/pypi/bricksentry-mcp/$VERSION/json" >/dev/null && exit 0
             sleep 10
           done
-          echo "bricksentry $VERSION not visible on PyPI yet"; exit 1
+          echo "bricksentry-mcp $VERSION not visible on PyPI yet"; exit 1
       - run: ./mcp-publisher login github-oidc
       - run: ./mcp-publisher publish

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 (2026-11-11)
+
+- New companion package `bricksentry-mcp`: `uvx bricksentry-mcp --config /full/path/bricksentry.yml` starts the MCP server with everything it needs. Before, `uvx bricksentry mcp` installed the package without its MCP extra and failed, and that is what MCP Registry clients ran. The registry listing now points at `bricksentry-mcp`.
+- Setup docs for Claude Code, the Claude desktop app and Cursor now use full config paths, which clients need because they start the server from their own folder.
+- `run_demo()` called from Python without DuckDB now raises one clear ImportError with the install command, instead of a CLI error with a traceback (reported in a Databricks notebook test).
+- New `agent-safe` policy template for changes written by AI agents.
+
 ## 0.1.6 (2026-11-11)
 
 - Slack and Teams alerts. Set `notify:` in bricksentry.yml (or `BRICKSENTRY_SLACK_WEBHOOK` / `BRICKSENTRY_TEAMS_WEBHOOK`) and `assess` / `preview` post the verdict, the rules that fired, the reviewers and a PR link when the verdict reaches `notify.on` (default `needs_human`). `--no-notify` turns it off; `Sentry.notify()` does it from Python; the GitHub Action takes `slack-webhook`, `teams-webhook` and `notify-on`. A failed webhook never changes the verdict.

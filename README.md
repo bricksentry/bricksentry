@@ -60,10 +60,29 @@ AI now writes much of our pipeline code, and checking what that code does to the
 
 ## For AI agents: the MCP server
 
+The quickest way to connect an agent is the `bricksentry-mcp` package, which installs bricksentry with its MCP and Databricks extras. With [uv](https://docs.astral.sh/uv/) there is nothing to install first:
+
 ```bash
-bricksentry mcp --config bricksentry.yml                 # stdio
-claude mcp add bricksentry -- bricksentry mcp --config /abs/path/bricksentry.yml
+# Claude Code
+claude mcp add bricksentry -- uvx bricksentry-mcp --config /full/path/to/bricksentry.yml
 ```
+
+```json
+{
+  "mcpServers": {
+    "bricksentry": {
+      "command": "uvx",
+      "args": ["bricksentry-mcp", "--config", "/full/path/to/bricksentry.yml"]
+    }
+  }
+}
+```
+
+The JSON works for the Claude desktop app, Cursor and other MCP clients. Use a **full path** to `bricksentry.yml`, because clients start the server from their own working folder. If an app can't find `uvx`, use its full path (`which uvx`). To share the setup through a repo, `claude mcp add -s project ...` writes it to `.mcp.json`; a relative path then works when Claude Code starts from the repo root. No config yet? `uvx --from bricksentry bricksentry init` writes a starter one.
+
+Already installed bricksentry with pip? `pip install "bricksentry[mcp,databricks]"` and run `bricksentry mcp --config /full/path/to/bricksentry.yml` instead. Add `--transport streamable-http` for remote agents.
+
+bricksentry is listed in the [official MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.bricksentry/bricksentry) as `io.github.bricksentry/bricksentry`.
 
 | Tool | What the agent gets |
 |---|---|
@@ -128,7 +147,7 @@ Check out with `fetch-depth: 0` and give the job `pull-requests: write` permissi
 Or use the bundled GitHub Action, which also writes the report to the job summary:
 
 ```yaml
-- uses: bricksentry/bricksentry@v0.1.6
+- uses: bricksentry/bricksentry@v0.1.7
   with:
     config: bricksentry.yml
     fail-on: needs_human
@@ -153,7 +172,7 @@ jobs:
           fetch-depth: 0
       # Build this PR's version of your pipeline into a per-PR schema first,
       # for example: databricks bundle deploy -t ci && databricks bundle run -t ci
-      - uses: bricksentry/bricksentry@v0.1.6
+      - uses: bricksentry/bricksentry@v0.1.7
         with:
           config: bricksentry.yml
           fail-on: needs_human
@@ -249,6 +268,7 @@ Start from a ready-made policy instead of writing one:
 
 | Template | For |
 |---|---|
+| `agent-safe` | Changes written by AI agents: anything beyond a small, clean change goes to a human |
 | `default` | Balanced: block duplicate keys, a human for row loss, dropped columns, PII and certified downstream |
 | `strict` | Production-critical pipelines: small changes need a human, failed checks block |
 | `pii` | Tables with personal data: any change to a `pii`-tagged table, or one feeding it, needs a human |

@@ -103,10 +103,12 @@ def run_demo(report_path: str | None = None) -> dict[str, Any]:
         from bricksentry.backends.duckdb_backend import DuckDBBackend
 
         backend = DuckDBBackend()
-    except ImportError as e:
-        raise click.ClickException(
-            'The demo runs on DuckDB. Install it with:  pip install "bricksentry[duckdb]"'
-        ) from e
+    except ImportError:
+        # Raised without the inner traceback so a notebook shows one clear line.
+        raise ImportError(
+            'The bricksentry demo runs on DuckDB, which is not installed. '
+            'Install it with:  pip install "bricksentry[duckdb]"  (in a notebook: %pip install duckdb)'
+        ) from None
 
     backend.execute("CREATE SCHEMA sales; CREATE SCHEMA sales_pr_42")
     backend.execute(SEED_SQL)

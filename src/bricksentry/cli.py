@@ -180,7 +180,10 @@ def demo(report_path):
     """Run the agent safety loop on a local 20,000-row example (needs bricksentry[duckdb])."""
     from bricksentry.demo import run_demo
 
-    run_demo(report_path)
+    try:
+        run_demo(report_path)
+    except ImportError as e:
+        raise click.ClickException(str(e)) from e
 
 
 @main.command()
@@ -305,6 +308,12 @@ def entry() -> None:
     except Exception as e:
         click.echo(f"bricksentry: error: {e}", err=True)
         sys.exit(2)
+
+
+def mcp_entry() -> None:
+    """Console entry for the ``bricksentry-mcp`` package: same as ``bricksentry mcp``."""
+    sys.argv = [sys.argv[0], "mcp", *sys.argv[1:]]
+    entry()
 
 
 if __name__ == "__main__":  # pragma: no cover
