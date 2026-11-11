@@ -2,6 +2,14 @@
 
 ## 0.1.11 (2026-11-11)
 
+> **Published by hand, without provenance.** GitHub Actions stopped starting jobs in this repository on 2026-11-11 (from about 20:20 UTC), so the release workflow could not run. `bricksentry` 0.1.11 was built from commit `b3d9c32` and uploaded manually with `twine`. That is why PyPI shows "loss of provenance" for this release: attestations are only created by the automated workflow. The 29 files inside the published wheel were compared with an independent build of the same commit and are identical. `bricksentry-mcp` was not published for 0.1.11. The next release goes through the normal workflow again, with provenance.
+>
+> SHA-256 of the published files:
+> - `bricksentry-0.1.11-py3-none-any.whl`: `67f914626c71784d473693c8bbe72665b4de9a48c1265dbb1d1d0afe65cb76f1`
+> - `bricksentry-0.1.11.tar.gz`: `6a894e20157734061850be33c1ca6af9dea160ba9f859babcc207939bc1c6913`
+>
+> Check a download with `shasum -a 256 <file>` (macOS) or `sha256sum <file>` (Linux).
+
 From a full live test of 0.1.9 on Databricks serverless:
 
 - Fix: when the Databricks SDK could not find credentials, the CLI showed the SDK's raw error. Run as a subprocess of a notebook it failed with a cryptic `parent_header` error. It now says it could not sign in to Databricks, lists the ways to provide credentials, and suggests the Python API inside notebooks.
