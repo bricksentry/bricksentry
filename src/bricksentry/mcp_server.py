@@ -33,7 +33,15 @@ def build_server():
     except ImportError:  # pragma: no cover
         ToolAnnotations = None
 
-    server = Server(name="bricksentry", instructions=INSTRUCTIONS)
+    from bricksentry import __version__
+
+    try:  # mcp >= 2 takes the version directly
+        server = Server(name="bricksentry", instructions=INSTRUCTIONS, version=__version__)
+    except TypeError:  # mcp 1.x: set it on the underlying low-level server
+        server = Server(name="bricksentry", instructions=INSTRUCTIONS)
+        low = getattr(server, "_mcp_server", None)
+        if low is not None and hasattr(low, "version"):
+            low.version = __version__
     for fn in agent_tools.TOOLS:
         ann = None
         if ToolAnnotations is not None:

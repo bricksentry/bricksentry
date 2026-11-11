@@ -199,3 +199,18 @@ def test_agent_safe_template_is_strict_for_agents():
     p = get_template("agent-safe")
     rules = {r["name"]: r["then"] for r in p["rules"]}
     assert rules["dropped-column"] == "block" and rules["row-loss"] == "needs_human"
+
+
+def test_mcp_server_reports_its_version():
+    import asyncio
+
+    pytest.importorskip("mcp")
+    import bricksentry
+    from bricksentry.mcp_server import build_server
+
+    server = build_server()
+    low = getattr(server, "_mcp_server", None) or getattr(server, "_lowlevel_server", None)
+    version = getattr(server, "version", None) or getattr(low, "version", None)
+    assert version == bricksentry.__version__
+    tools = asyncio.run(server.list_tools())
+    assert len(tools) == 6
