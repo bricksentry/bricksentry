@@ -20,6 +20,15 @@ inputs:
   comment:
     description: Post or update a PR comment with the report
     default: "true"
+  slack-webhook:
+    description: Slack incoming webhook URL for verdict alerts. Pass it from a secret, e.g. secrets.SLACK_WEBHOOK_URL
+    default: ""
+  teams-webhook:
+    description: Microsoft Teams Workflows webhook URL for verdict alerts. Pass it from a secret
+    default: ""
+  notify-on:
+    description: Send an alert at this verdict or worse (pass, warn, needs_human, block)
+    default: needs_human
   version:
     description: bricksentry version spec to install (e.g. "==0.1.0"); empty = latest
     default: ""
@@ -44,6 +53,9 @@ runs:
       env:
         BRICKSENTRY_PR: ${{ github.event.pull_request.number }}
         GITHUB_TOKEN: ${{ github.token }}
+        BRICKSENTRY_SLACK_WEBHOOK: ${{ inputs.slack-webhook }}
+        BRICKSENTRY_TEAMS_WEBHOOK: ${{ inputs.teams-webhook }}
+        BRICKSENTRY_NOTIFY_ON: ${{ inputs.notify-on }}
       run: |
         set +e
         BASE="${{ inputs.base-ref }}"

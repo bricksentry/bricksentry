@@ -25,6 +25,12 @@ jobs:
           if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
             echo "Tag $GITHUB_REF_NAME does not match pyproject version $VERSION"; exit 1
           fi
+          python - <<PY
+          import json, sys
+          d = json.load(open("server.json"))
+          bad = {d["version"], d["packages"][0]["version"]} - {"$VERSION"}
+          sys.exit(f"server.json version {bad} does not match $VERSION" if bad else 0)
+          PY
       - run: pip install -e ".[dev]" build twine
       - run: pytest -q
       - run: python -m build
@@ -68,3 +74,44 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "bricksentry ${GITHUB_REF_NAME#v}" --generate-notes
           fi
+
+  # Lists the MCP server in the official MCP Registry (registry.modelcontextprotocol.io).
+  # GitHub OIDC proves this repo owns the io.github.bricksentry/* namespace, so no token is stored.
+  # Ownership of the PyPI package is checked through the mcp-name line in README.md.
+  mcp-registry:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          arch="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+          archive="mcp-publisher_${os}_${arch}.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+      - name: Wait for PyPI to show the new version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 30); do
+            curl -sf "https://pypi.org/pypi/bricksentry/$VERSION/json" >/dev/null && exit 0
+            sleep 10
+          done
+          echo "bricksentry $VERSION not visible on PyPI yet"; exit 1
+      - run: ./mcp-publisher login github-oidc
+      - run: ./mcp-publisher publish

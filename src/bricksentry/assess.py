@@ -186,6 +186,17 @@ class Sentry:
         out["preview"] = {"sandbox_table": clone if keep else None, "executed_sql": rewritten}
         return out
 
+    # --- alerts ---------------------------------------------------------------
+    def notify(self, assessment: Assessment, pr: str | None = None, force: bool = False) -> list[str]:
+        """Send a Slack / Teams alert for ``assessment`` if configured. Never raises."""
+        from bricksentry.notify import NotifySettings, send
+
+        try:
+            settings = NotifySettings.from_config(self.config.notify)
+        except ValueError as e:
+            return [f"notify: bad config ({e})"]
+        return send(assessment, settings, pr=pr, force=force)
+
     # --- lookups for agents -------------------------------------------------
     def get_assessment(self, assessment_id: str) -> Assessment | None:
         return self._assessments.get(assessment_id) or self._load(assessment_id)

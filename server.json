@@ -1,0 +1,42 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.bricksentry/bricksentry",
+  "title": "bricksentry",
+  "description": "Safety check for AI agent and pipeline writes to Databricks tables, before they reach production.",
+  "repository": {
+    "url": "https://github.com/bricksentry/bricksentry",
+    "source": "github"
+  },
+  "websiteUrl": "https://bricksentry.org",
+  "version": "0.1.6",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "bricksentry",
+      "version": "0.1.6",
+      "runtimeHint": "uvx",
+      "packageArguments": [
+        {"type": "positional", "value": "mcp"}
+      ],
+      "transport": {"type": "stdio"},
+      "environmentVariables": [
+        {
+          "name": "BRICKSENTRY_CONFIG",
+          "description": "Path to your bricksentry.yml (backend, tables and policy).",
+          "isRequired": false
+        },
+        {
+          "name": "DATABRICKS_HOST",
+          "description": "Databricks workspace URL, when using the Databricks backend.",
+          "isRequired": false
+        },
+        {
+          "name": "DATABRICKS_TOKEN",
+          "description": "Databricks access token, when using the Databricks backend.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

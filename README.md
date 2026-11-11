@@ -1,5 +1,7 @@
 # Welcome to bricksentry
 
+<!-- mcp-name: io.github.bricksentry/bricksentry -->
+
 [![PyPI](https://img.shields.io/pypi/v/bricksentry)](https://pypi.org/project/bricksentry/) [![Python](https://img.shields.io/pypi/pyversions/bricksentry)](https://pypi.org/project/bricksentry/) [![Tests](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml/badge.svg)](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml) [![Lint](https://github.com/bricksentry/bricksentry/actions/workflows/lint.yml/badge.svg)](https://github.com/bricksentry/bricksentry/actions/workflows/lint.yml) [![Coverage](https://img.shields.io/badge/coverage-%E2%89%A575%25%20enforced-brightgreen)](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 ***The safety check for data changes in the AI era.***
@@ -88,6 +90,8 @@ To watch the whole loop, run `bricksentry demo` (see the top of this page). `bri
 
 ```bash
 bricksentry init                                        # starter bricksentry.yml + policy.yml
+bricksentry init --policy finance                       # ...or start from a policy template
+bricksentry policies                                    # list the policy templates
 bricksentry impact main.sales.orders                    # blast radius
 bricksentry diff main.sales.orders main.sales_pr_42.orders
 bricksentry preview main.sales.orders --sql "MERGE INTO {{target}} t USING updates u ON t.order_id = u.order_id WHEN MATCHED THEN UPDATE SET *"
@@ -124,11 +128,59 @@ Check out with `fetch-depth: 0` and give the job `pull-requests: write` permissi
 Or use the bundled GitHub Action, which also writes the report to the job summary:
 
 ```yaml
-- uses: bricksentry/bricksentry@v0.1.0
+- uses: bricksentry/bricksentry@v0.1.6
   with:
     config: bricksentry.yml
     fail-on: needs_human
 ```
+
+A complete workflow you can copy to `.github/workflows/bricksentry.yml`:
+
+```yaml
+name: bricksentry
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Build this PR's version of your pipeline into a per-PR schema first,
+      # for example: databricks bundle deploy -t ci && databricks bundle run -t ci
+      - uses: bricksentry/bricksentry@v0.1.6
+        with:
+          config: bricksentry.yml
+          fail-on: needs_human
+          slack-webhook: ${{ secrets.SLACK_WEBHOOK_URL }}    # optional
+          teams-webhook: ${{ secrets.TEAMS_WEBHOOK_URL }}    # optional
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_WAREHOUSE_ID: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+```
+
+To make the check binding, mark this job as a required status check in your branch protection rules. Then a `needs_human` or `block` verdict stops the merge, whatever the author or an agent decides.
+
+### Alerts in Slack and Teams
+
+When the verdict is `needs_human` or worse, bricksentry can post a short alert: the verdict, the rules that fired, who should review, and a link to the PR.
+
+```yaml
+# bricksentry.yml
+notify:
+  on: needs_human                         # alert at this verdict or worse
+  slack_webhook: env:SLACK_WEBHOOK_URL    # Slack incoming webhook
+  teams_webhook: env:TEAMS_WEBHOOK_URL    # Teams Workflows "webhook request" URL
+```
+
+Keep webhook URLs in secrets or environment variables, never in the file. `BRICKSENTRY_SLACK_WEBHOOK` and `BRICKSENTRY_TEAMS_WEBHOOK` work too. `assess` and `preview` send alerts automatically when a webhook is set (`--no-notify` turns them off), and in Python call `sentry.notify(assessment)`. A failed webhook is reported but never changes the verdict or fails the run.
 
 ## Python API
 
@@ -157,7 +209,7 @@ tables:
     keys: [order_id]
     segment_by: [region]
     paths: ["src/pipelines/orders/**", "resources/orders_job.yml"]
-policy: policy.yml
+policy: policy.yml            # or builtin:<template>, see "Policy templates" below
 ```
 
 ### Policy example
@@ -191,6 +243,20 @@ rules:
 
 If several rules match, the most severe one wins. The full starter policy is in [`examples/databricks/policy.yml`](examples/databricks/policy.yml), and `bricksentry init` writes one for you.
 
+### Policy templates
+
+Start from a ready-made policy instead of writing one:
+
+| Template | For |
+|---|---|
+| `default` | Balanced: block duplicate keys, a human for row loss, dropped columns, PII and certified downstream |
+| `strict` | Production-critical pipelines: small changes need a human, failed checks block |
+| `pii` | Tables with personal data: any change to a `pii`-tagged table, or one feeding it, needs a human |
+| `certified` | Certified or gold tables that dashboards and AI rely on |
+| `finance` | Revenue and money tables: totals can't move quietly, double counting is blocked |
+
+Use one directly with `policy: builtin:finance`, or write an editable copy with `bricksentry init --policy finance`. `bricksentry policies finance` prints it. Tags come from Unity Catalog, so tag your tables `pii` or `certified` for those templates to apply.
+
 ### Policy conditions
 
 `table` (glob) · `tag` · `downstream_tag` · `downstream_kind` · `downstream_count_gt` · `removed_pct_gt` · `added_pct_gt` · `changed_pct_gt` · `row_count_change_pct_gt` · `row_count_drop_pct_gt` · `column_removed` · `column_added` · `column_type_changed` · `duplicate_keys` · `null_keys` · `sum_change_pct_gt` / `null_increase_gt` (optionally with `column`) · `any_change` · `diff_error`
@@ -215,7 +281,7 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 
 **Top priority: validation across more workspaces.** Classic and serverless compute, AWS, Azure and GCP, and workspaces with restricted system-table access. If you run the quickstart notebook, please [share what you see](https://github.com/bricksentry/bricksentry/issues), whether it works or not.
 
-Next: Asset Bundle parsing for automatic table detection · column-level blast radius from `system.access.column_lineage` · an aggregate diff for keyless tables · Lakeflow expectations in the verdict · `bricksentry watch` for scheduled drift checks · a Databricks App UI.
+Next: dbt support, so dbt models on Databricks get the same diff, blast radius and verdict (planned for 0.2) · Asset Bundle parsing for automatic table detection · column-level blast radius from `system.access.column_lineage` · an aggregate diff for keyless tables · Lakeflow expectations in the verdict · `bricksentry watch` for scheduled drift checks · a Databricks App UI.
 
 ## Contributing
 

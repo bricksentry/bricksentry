@@ -31,6 +31,29 @@ class PreviewGuardError(ValueError):
     pass
 
 
+# What to do instead when a statement is refused. preview_write only runs data
+# writes on a clone; these commands change the table itself, its permissions or
+# its history, so they belong in a reviewed migration, not an agent's dry run.
+SAFE_ALTERNATIVES = {
+    "DROP": "To test removing all rows, preview `DELETE FROM {{target}}`. To retire a table, make it a reviewed "
+            "migration and run whats_downstream first to see who still reads it.",
+    "TRUNCATE": "Preview `DELETE FROM {{target}}` (optionally with a WHERE clause) to see the same effect on a clone.",
+    "ALTER": "To test a schema change, preview `CREATE OR REPLACE TABLE {{target}} AS SELECT ...` with the new "
+             "columns or types; the diff shows dropped columns and type changes. Apply the real ALTER in a reviewed migration.",
+    "GRANT": "Permissions are not data changes, so there is nothing to diff. Change grants in Unity Catalog through a reviewed process.",
+    "REVOKE": "Permissions are not data changes, so there is nothing to diff. Change grants in Unity Catalog through a reviewed process.",
+    "VACUUM": "VACUUM removes old versions and limits rollback. Run it as scheduled maintenance, not as part of a change.",
+    "RESTORE": "To undo a change, use rollback_plan(table) to get the exact RESTORE statement and run it with a human's approval.",
+}
+
+
+def _refusal(keyword: str) -> str:
+    k = keyword.upper()
+    hint = SAFE_ALTERNATIVES.get(k, "")
+    msg = f"preview_write refuses {k}: it only runs INSERT / MERGE / UPDATE / DELETE / CREATE OR REPLACE TABLE on a clone."
+    return f"{msg} Instead: {hint}" if hint else msg
+
+
 def sandbox_name(sandbox_schema: str, target: str) -> str:
     short = target.split(".")[-1]
     return f"{sandbox_schema}.{short}__preview_{uuid.uuid4().hex[:8]}"
@@ -51,9 +74,12 @@ def rewrite_for_preview(sql: str, target: str, clone: str, quote) -> str:
     body = sql.strip().rstrip(";").strip()
     code = _strip_sql_comments_and_strings(body)
     if ";" in code:
-        raise PreviewGuardError("preview_write accepts exactly one SQL statement")
-    if _FORBIDDEN_RE.search(code):
-        raise PreviewGuardError("preview_write only runs INSERT / MERGE / UPDATE / DELETE / CREATE OR REPLACE TABLE")
+        raise PreviewGuardError(
+            "preview_write accepts exactly one SQL statement. Preview each write separately, in the order they would run."
+        )
+    forbidden = _FORBIDDEN_RE.search(code)
+    if forbidden:
+        raise PreviewGuardError(_refusal(forbidden.group(1)))
 
     clone_q = ".".join(quote(p) for p in clone.split("."))
     if PLACEHOLDER in body:

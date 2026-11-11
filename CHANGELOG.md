@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.6 (2026-11-11)
+
+- Slack and Teams alerts. Set `notify:` in bricksentry.yml (or `BRICKSENTRY_SLACK_WEBHOOK` / `BRICKSENTRY_TEAMS_WEBHOOK`) and `assess` / `preview` post the verdict, the rules that fired, the reviewers and a PR link when the verdict reaches `notify.on` (default `needs_human`). `--no-notify` turns it off; `Sentry.notify()` does it from Python; the GitHub Action takes `slack-webhook`, `teams-webhook` and `notify-on`. A failed webhook never changes the verdict.
+- Policy templates: `default`, `strict`, `pii`, `certified` and `finance`. Use `policy: builtin:<name>`, `bricksentry init --policy <name>`, or list them with `bricksentry policies`.
+- When `preview_write` refuses DROP, TRUNCATE, ALTER, GRANT, REVOKE, VACUUM or RESTORE, the error now says what to do instead.
+- Listed in the official MCP Registry as `io.github.bricksentry/bricksentry` (published automatically on each release).
+- A complete copy-paste GitHub Actions workflow in the README.
+
 ## 0.1.5 (2026-11-10)
 
 - Clearer MCP tool definitions for agents. Each tool now says when to use it versus its sibling tools and what it returns, and every parameter has a description in the tool schema (for example the `candidates` map format for `assess_change`). No behavior changes.

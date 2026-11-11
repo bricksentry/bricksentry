@@ -18,7 +18,11 @@ Example::
         keys: [order_id]
         segment_by: [region]
         paths: ["pipelines/orders/**", "resources/orders_job.yml"]
-    policy: policy.yml            # or inline mapping
+    policy: policy.yml            # a file, an inline mapping, or builtin:<name> (see `bricksentry policies`)
+    notify:                       # optional Slack / Teams alerts
+      on: needs_human
+      slack_webhook: env:SLACK_WEBHOOK_URL
+      teams_webhook: env:TEAMS_WEBHOOK_URL
 """
 
 from __future__ import annotations
@@ -54,6 +58,7 @@ class Config:
     lineage: dict[str, Any] = field(default_factory=dict)
     tables: dict[str, TableSpec] = field(default_factory=dict)
     policy: dict[str, Any] | None = None
+    notify: dict[str, Any] = field(default_factory=dict)
     root: Path = field(default_factory=Path.cwd)
 
     @classmethod
@@ -77,7 +82,12 @@ class Config:
             )
         policy = data.get("policy")
         if isinstance(policy, str):
-            policy = yaml.safe_load((root / policy).read_text()) or {}
+            if policy.strip().lower().startswith("builtin:"):
+                from bricksentry.policy_templates import get_template
+
+                policy = get_template(policy.split(":", 1)[1])
+            else:
+                policy = yaml.safe_load((root / policy).read_text()) or {}
         return cls(
             backend=data.get("backend") or {"type": "duckdb"},
             sandbox_schema=data.get("sandbox_schema", "bricksentry_sandbox"),
@@ -89,6 +99,7 @@ class Config:
             lineage=data.get("lineage") or {},
             tables=tables,
             policy=policy,
+            notify=data.get("notify") or {},
             root=root,
         )
 

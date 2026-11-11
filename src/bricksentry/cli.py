@@ -40,6 +40,8 @@ def _exit_for(verdict: Verdict, fail_on: str) -> None:
 
 config_opt = click.option("--config", "-c", "config_path", type=click.Path(), default=None,
                           help="Path to bricksentry.yml (default: ./bricksentry.yml or $BRICKSENTRY_CONFIG)")
+notify_opt = click.option("--notify/--no-notify", "notify", default=True, show_default=True,
+                          help="Send a Slack/Teams alert if webhooks are configured (see notify: in bricksentry.yml)")
 fail_opt = click.option("--fail-on", type=click.Choice([v.value for v in Verdict]), default="block",
                         show_default=True, help="Exit 1 when the verdict is at least this severe")
 
@@ -94,9 +96,10 @@ def impact(table, depth, fmt, config_path):
 @click.option("--format", "fmt", type=click.Choice(["text", "json", "markdown"]), default="text")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Also write the markdown report here.")
 @click.option("--comment", is_flag=True, help="Post/update the report as a GitHub PR comment.")
+@notify_opt
 @fail_opt
 @config_opt
-def assess(tables, git_base, cand_pairs, pr, fmt, output, comment, fail_on, config_path):
+def assess(tables, git_base, cand_pairs, pr, fmt, output, comment, notify, fail_on, config_path):
     """Assess a change: data diff + blast radius + policy verdict + rollback plan."""
     from bricksentry.changes import changed_files, tables_for_files
     from bricksentry.report import to_markdown
@@ -122,6 +125,9 @@ def assess(tables, git_base, cand_pairs, pr, fmt, output, comment, fail_on, conf
 
         url = upsert_pr_comment(md, pr=pr)
         click.echo(f"PR comment: {url}", err=True)
+    if notify:
+        for line in s.notify(a, pr=pr):
+            click.echo(f"notify {line}", err=True)
     if fmt == "text":
         click.echo(f"{a.verdict.value.upper()} (risk {a.verdict.risk_tier})")
         for t in a.tables:
@@ -141,15 +147,21 @@ def assess(tables, git_base, cand_pairs, pr, fmt, output, comment, fail_on, conf
 @click.option("--file", "sql_file", type=click.Path(exists=True), default=None)
 @click.option("--key", "-k", "keys", multiple=True)
 @click.option("--format", "fmt", type=click.Choice(["text", "json"]), default="text")
+@notify_opt
 @fail_opt
 @config_opt
-def preview(target, sql_text, sql_file, keys, fmt, fail_on, config_path):
+def preview(target, sql_text, sql_file, keys, fmt, notify, fail_on, config_path):
     """Run a write against a sandbox clone of TARGET and show what it would change."""
     if not (sql_text or sql_file):
         raise click.UsageError("pass --sql or --file")
     sql = sql_text or Path(sql_file).read_text()
     s = _sentry(config_path)
     out = s.preview_write(sql, target, keys=list(keys) or None)
+    if notify:
+        a = s.get_assessment(out["id"])
+        if a is not None:
+            for line in s.notify(a):
+                click.echo(f"notify {line}", err=True)
     if fmt == "json":
         _emit(out, fmt)
     else:
@@ -204,6 +216,12 @@ candidate_pattern: "{catalog}.{schema}_pr_{pr}.{table}"
 
 # sample_pct: 10           # diff a deterministic 10% key sample on big tables
 
+# Optional Slack / Teams alerts. Keep webhook URLs in environment variables or CI secrets.
+# notify:
+#   on: needs_human
+#   slack_webhook: env:SLACK_WEBHOOK_URL
+#   teams_webhook: env:TEAMS_WEBHOOK_URL
+
 lineage:
   depth: 3
   lookback_days: 90
@@ -236,9 +254,16 @@ rules:
 
 @main.command()
 @click.option("--force", is_flag=True)
-def init(force):
+@click.option("--policy", "template", default="default", show_default=True,
+              help="Policy template for policy.yml (see `bricksentry policies`)")
+def init(force, template):
     """Write a starter bricksentry.yml and policy.yml."""
-    for name, body in (("bricksentry.yml", _INIT_CONFIG), ("policy.yml", _INIT_POLICY)):
+    from bricksentry.policy_templates import TEMPLATES, to_yaml
+
+    if template.lower() not in TEMPLATES:
+        raise click.UsageError(f"unknown template {template!r}; choose from {', '.join(sorted(TEMPLATES))}")
+    policy_body = _INIT_POLICY if template.lower() == "default" else to_yaml(template)
+    for name, body in (("bricksentry.yml", _INIT_CONFIG), ("policy.yml", policy_body)):
         p = Path(name)
         if p.exists() and not force:
             click.echo(f"skip {name} (exists; use --force)")
@@ -247,6 +272,21 @@ def init(force):
         click.echo(f"wrote {name}")
 
 
+@main.command()
+@click.argument("name", required=False)
+def policies(name):
+    """List the built-in policy templates, or print one as policy.yml."""
+    from bricksentry.policy_templates import TEMPLATES, to_yaml
+
+    if name:
+        if name.lower() not in TEMPLATES:
+            raise click.UsageError(f"unknown template {name!r}; choose from {', '.join(sorted(TEMPLATES))}")
+        click.echo(to_yaml(name), nl=False)
+        return
+    width = max(len(n) for n in TEMPLATES)
+    for n, t in TEMPLATES.items():
+        click.echo(f"{n.ljust(width)}  {t['description']}")
+    click.echo("\nUse one with `policy: builtin:<name>` in bricksentry.yml, or `bricksentry init --policy <name>`.")
 
 
 def entry() -> None:
