@@ -126,7 +126,7 @@ def test_checks_the_latest_data_change_and_cleans_up(run_notebook):
 
 def test_share_link_prefills_the_form_without_names(run_notebook):
     ns, _, out = run_notebook()
-    url = next(line for line in out.splitlines() if line.startswith("https://github.com/"))
+    url = next(line for line in out.splitlines() if urlparse(line).netloc == "github.com")
     q = parse_qs(urlparse(url).query)
     assert q["template"] == ["it_caught_this.yml"]
     assert q["verdict"] == ["block"]

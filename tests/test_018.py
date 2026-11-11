@@ -184,7 +184,8 @@ def test_run_link_priority(monkeypatch):
     assert notify.run_link()[0] == "https://github.com/acme/data/actions/runs/77"
     assert notify.run_link(pr="5") == ("https://github.com/acme/data/pull/5", "Open pull request")
     assert notify.run_link(pr="5", run_url="https://ci.example.com/r/1") == ("https://ci.example.com/r/1", "Open run")
-    assert notify.run_link(run_url="javascript:alert(1)")[0].startswith("https://github.com")
+    # a non-http(s) run_url is ignored, so the GitHub link is used instead
+    assert notify.run_link(run_url="javascript:alert(1)") == ("https://github.com/acme/data/actions/runs/77", "Open GitHub run")
 
 
 def test_databricks_job_run_link(monkeypatch):
