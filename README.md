@@ -147,7 +147,7 @@ Check out with `fetch-depth: 0` and give the job `pull-requests: write` permissi
 Or use the bundled GitHub Action, which also writes the report to the job summary:
 
 ```yaml
-- uses: bricksentry/bricksentry@v0.1.7
+- uses: bricksentry/bricksentry@v0.1.8
   with:
     config: bricksentry.yml
     fail-on: needs_human
@@ -172,7 +172,7 @@ jobs:
           fetch-depth: 0
       # Build this PR's version of your pipeline into a per-PR schema first,
       # for example: databricks bundle deploy -t ci && databricks bundle run -t ci
-      - uses: bricksentry/bricksentry@v0.1.7
+      - uses: bricksentry/bricksentry@v0.1.8
         with:
           config: bricksentry.yml
           fail-on: needs_human
@@ -189,7 +189,7 @@ To make the check binding, mark this job as a required status check in your bran
 
 ### Alerts in Slack and Teams
 
-When the verdict is `needs_human` or worse, bricksentry can post a short alert: the verdict, the rules that fired, who should review, and a link to the PR.
+When the verdict is `needs_human` or worse, bricksentry can post a short alert: the verdict, the rules that fired, who should review, and a link back to where the check ran.
 
 ```yaml
 # bricksentry.yml
@@ -197,9 +197,21 @@ notify:
   on: needs_human                         # alert at this verdict or worse
   slack_webhook: env:SLACK_WEBHOOK_URL    # Slack incoming webhook
   teams_webhook: env:TEAMS_WEBHOOK_URL    # Teams Workflows "webhook request" URL
+  mentions:                               # optional: @-mention reviewers in Slack
+    finance-analytics: S0123ABCD          # a user group id (starts with S)
+    jane@acme.com: U0456EFGH              # a member id (starts with U)
 ```
 
-Keep webhook URLs in secrets or environment variables, never in the file. `BRICKSENTRY_SLACK_WEBHOOK` and `BRICKSENTRY_TEAMS_WEBHOOK` work too. `assess` and `preview` send alerts automatically when a webhook is set (`--no-notify` turns them off), and in Python call `sentry.notify(assessment)`. A failed webhook is reported but never changes the verdict or fails the run.
+Then check the setup with one command. It sends a clearly labelled sample alert and reads no tables:
+
+```bash
+bricksentry test-alert
+```
+
+- **Keep webhook URLs secret.** Put them in CI secrets or environment variables (`BRICKSENTRY_SLACK_WEBHOOK` and `BRICKSENTRY_TEAMS_WEBHOOK` work too), never in the file; bricksentry warns if it finds one there.
+- **Links back to the run.** In GitHub Actions the alert links to the PR or run. In a Databricks job it links to the job run. Anywhere else, set `BRICKSENTRY_RUN_URL` (or `notify.run_url`).
+- **Mentions.** Owners come from Unity Catalog. Map them to Slack ids under `mentions` and the alert @-mentions them; unmapped owners are shown as text. Find an id in Slack under a person's profile or a user group's menu, "Copy member ID" / "Copy group ID".
+- **Never breaks a run.** `assess` and `preview` send alerts automatically when a webhook is set (`--no-notify` turns them off); in Python call `sentry.notify(assessment)`. If Slack or Teams is busy the alert is retried once, a failure is reported without the webhook URL, and the verdict always stands.
 
 ## Python API
 
@@ -227,9 +239,14 @@ tables:
   main.sales.orders:
     keys: [order_id]
     segment_by: [region]
+    measures: [amount, quantity]   # totals worth checking (see below)
     paths: ["src/pipelines/orders/**", "resources/orders_job.yml"]
 policy: policy.yml            # or builtin:<template>, see "Policy templates" below
 ```
+
+Typos are caught: an unknown key such as `sample_pc` prints a warning that names the right one (`did you mean 'sample_pct'?`) instead of being silently ignored.
+
+**Which totals are checked.** `sum_change_pct_gt` rules and summaries look at measures: by default every numeric column except keys and columns whose names look like IDs, codes, years and other date parts, coordinates, ratings, scores or rates (a 10% drop in `sum(established_year)` only says rows were removed). List `measures` for a table to choose exactly, or set `measures: all` to check every numeric column. A rule that names a column (`when: {column: rating, sum_change_pct_gt: 1}`) always checks it.
 
 ### Policy example
 

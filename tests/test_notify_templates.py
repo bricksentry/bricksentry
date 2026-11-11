@@ -168,13 +168,25 @@ def test_companion_package_matches_release():
 def test_mcp_entry_runs_the_mcp_command(monkeypatch):
     import sys
 
+    import bricksentry.mcp_server as ms
     from bricksentry import cli
 
     seen = {}
     monkeypatch.setattr(sys, "argv", ["bricksentry-mcp", "--transport", "sse"])
-    monkeypatch.setattr(cli, "entry", lambda: seen.setdefault("argv", list(sys.argv)))
+    monkeypatch.setattr(ms, "serve", lambda transport: seen.setdefault("transport", transport))
     cli.mcp_entry()
-    assert seen["argv"] == ["bricksentry-mcp", "mcp", "--transport", "sse"]
+    assert seen["transport"] == "sse"
+
+
+def test_mcp_entry_help_names_the_package(monkeypatch, capsys):
+    import sys
+
+    from bricksentry import cli
+
+    monkeypatch.setattr(sys, "argv", ["bricksentry-mcp", "--help"])
+    cli.mcp_entry()  # prints help and returns (exit code 0)
+    out = capsys.readouterr().out
+    assert "Usage: bricksentry-mcp [OPTIONS]" in out and "bricksentry-mcp mcp" not in out
 
 
 def test_demo_without_duckdb_gives_one_clear_line(monkeypatch):

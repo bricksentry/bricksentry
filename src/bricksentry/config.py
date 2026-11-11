@@ -17,6 +17,7 @@ Example::
       main.sales.orders:
         keys: [order_id]
         segment_by: [region]
+        measures: [amount, quantity]   # totals worth checking (default: numeric columns that aren't IDs, years, ratings...)
         paths: ["pipelines/orders/**", "resources/orders_job.yml"]
     policy: policy.yml            # a file, an inline mapping, or builtin:<name> (see `bricksentry policies`)
     notify:                       # optional Slack / Teams alerts
@@ -27,7 +28,9 @@ Example::
 
 from __future__ import annotations
 
+import difflib
 import os
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,6 +38,57 @@ from typing import Any
 import yaml
 
 DEFAULT_CONFIG_NAMES = ("bricksentry.yml", "bricksentry.yaml", ".bricksentry.yml")
+
+TOP_LEVEL_KEYS = {
+    "backend", "sandbox_schema", "candidate_pattern", "sample_pct", "sample_guard",
+    "assessment_store", "max_samples", "lineage", "tables", "policy", "notify",
+}
+TABLE_KEYS = {"keys", "key", "segment_by", "paths", "candidate", "measures"}
+NOTIFY_KEYS = {"on", "slack_webhook", "teams_webhook", "mentions", "run_url"}
+LINEAGE_KEYS = {"depth", "lookback_days"}
+
+
+def _unknown(where: str, given: Any, known: set[str]) -> list[str]:
+    """Warnings for keys bricksentry would silently ignore (usually a typo)."""
+    if not isinstance(given, dict):
+        return []
+    out = []
+    for k in given:
+        if k in known:
+            continue
+        near = difflib.get_close_matches(str(k), sorted(known), n=1, cutoff=0.6)
+        out.append(f"{where}: unknown key {k!r} is ignored" + (f" (did you mean {near[0]!r}?)" if near else ""))
+    return out
+
+
+def config_warnings(data: dict[str, Any]) -> list[str]:
+    """Typos and misplaced keys in a bricksentry.yml mapping. Never raises."""
+    if not isinstance(data, dict):
+        return ["bricksentry.yml should be a mapping of settings"]
+    w = _unknown("bricksentry.yml", data, TOP_LEVEL_KEYS)
+    w += _unknown("notify", data.get("notify"), NOTIFY_KEYS)
+    w += _unknown("lineage", data.get("lineage"), LINEAGE_KEYS)
+    for name, spec in (data.get("tables") or {}).items() if isinstance(data.get("tables"), dict) else []:
+        w += _unknown(f"tables.{name}", spec, TABLE_KEYS)
+        if isinstance(spec, dict) and not (spec.get("keys") or spec.get("key")):
+            w.append(f"tables.{name}: no keys set, so rows can't be matched (diffs will need --key)")
+        if str(name).count(".") != 2 and str((data.get("backend") or {}).get("type", "")).lower() == "databricks":
+            w.append(f"tables.{name}: use the full catalog.schema.table name")
+    n = data.get("notify")
+    if isinstance(n, dict):
+        for k in ("slack_webhook", "teams_webhook"):
+            v = str(n.get(k) or "")
+            if v.startswith("https://"):
+                w.append(f"notify.{k}: the webhook URL is written in the file; it is a secret, use env:NAME instead")
+    return w
+
+
+def _measures(v: Any) -> list[str] | str | None:
+    if v is None or v == []:
+        return None
+    if isinstance(v, str):
+        return "all" if v.strip().lower() == "all" else [v]
+    return [str(x) for x in v]
 
 
 @dataclass
@@ -44,6 +98,7 @@ class TableSpec:
     segment_by: list[str] = field(default_factory=list)
     paths: list[str] = field(default_factory=list)
     candidate: str | None = None  # explicit candidate table, overrides candidate_pattern
+    measures: list[str] | str | None = None  # columns whose totals matter; "all" for every numeric column
 
 
 @dataclass
@@ -60,6 +115,7 @@ class Config:
     policy: dict[str, Any] | None = None
     notify: dict[str, Any] = field(default_factory=dict)
     root: Path = field(default_factory=Path.cwd)
+    warnings: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], root: Path | None = None) -> Config:
@@ -79,6 +135,7 @@ class Config:
                 segment_by=list(seg),
                 paths=list(spec.get("paths") or []),
                 candidate=spec.get("candidate"),
+                measures=_measures(spec.get("measures")),
             )
         policy = data.get("policy")
         if isinstance(policy, str):
@@ -101,10 +158,21 @@ class Config:
             policy=policy,
             notify=data.get("notify") or {},
             root=root,
+            warnings=config_warnings(data),
         )
 
     @classmethod
-    def load(cls, path: str | os.PathLike | None = None) -> Config:
+    def load(cls, path: str | os.PathLike | None = None, warn: bool = True) -> Config:
+        """Load bricksentry.yml. Typos and ignored keys are reported as Python warnings
+        (``warn=False`` to skip that and read ``config.warnings`` yourself)."""
+        cfg = cls._load(path)
+        if warn:
+            for w in cfg.warnings:
+                warnings.warn(f"bricksentry config: {w}", UserWarning, stacklevel=2)
+        return cfg
+
+    @classmethod
+    def _load(cls, path: str | os.PathLike | None = None) -> Config:
         if path is None:
             path = os.environ.get("BRICKSENTRY_CONFIG")
         if path is None:

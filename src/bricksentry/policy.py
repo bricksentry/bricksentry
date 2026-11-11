@@ -36,6 +36,7 @@ from __future__ import annotations
 import fnmatch
 from typing import Any
 
+from bricksentry.measures import is_measure
 from bricksentry.models import ImpactNode, RuleHit, TableDiff, Verdict
 
 DEFAULT_POLICY: dict[str, Any] = {
@@ -89,10 +90,11 @@ class Policy:
         downstream: list[ImpactNode],
         tags: dict[str, str],
         diff_error: str | None = None,
+        measures: list[str] | str | None = None,
     ) -> tuple[Verdict, list[RuleHit]]:
         hits: list[RuleHit] = []
         for r in self.rules:
-            ok, reason = _match(r.get("when") or {}, table, diff, downstream, tags, diff_error)
+            ok, reason = _match(r.get("when") or {}, table, diff, downstream, tags, diff_error, measures)
             if ok:
                 hits.append(RuleHit(rule=r.get("name", "unnamed"), verdict=Verdict(r.get("then", "warn")), table=table, reason=reason))
         verdict = Verdict.worst([self.default] + [h.verdict for h in hits])
@@ -118,6 +120,7 @@ def _match(
     downstream: list[ImpactNode],
     tags: dict[str, str],
     diff_error: str | None,
+    measures: list[str] | str | None = None,
 ) -> tuple[bool, str]:
     reasons: list[str] = []
     for cond, val in when.items():
@@ -210,7 +213,11 @@ def _match(
             continue
         if cond == "sum_change_pct_gt":
             col = when.get("column")
-            cols = [c for c in diff.columns if (col is None or c.column == col) and c.sum_change_pct is not None]
+            cols = [
+                c for c in diff.columns
+                if c.sum_change_pct is not None
+                and (c.column == col if col is not None else is_measure(c.column, diff.keys, measures))
+            ]
             m = [c for c in cols if abs(c.sum_change_pct) > float(val)]
             if not m:
                 return False, ""

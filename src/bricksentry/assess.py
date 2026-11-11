@@ -102,8 +102,9 @@ class Sentry:
                 nodes = []
                 err = err or f"lineage lookup failed: {e}"
             owner, tags = self.lineage.owner_and_tags(table)
-            verdict, hits = self.policy.evaluate(table, diff, nodes, tags, diff_error=err)
-            summary = (explain_diff(diff) if diff else f"{table}: diff unavailable ({err}).") + " " + explain_impact(table, nodes)
+            measures = self.config.spec(table).measures
+            verdict, hits = self.policy.evaluate(table, diff, nodes, tags, diff_error=err, measures=measures)
+            summary = (explain_diff(diff, measures) if diff else f"{table}: diff unavailable ({err}).") + " " + explain_impact(table, nodes)
             ta = TableAssessment(
                 table=table,
                 diff=diff,

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.8 (2026-11-11)
+
+From the first real Slack alert sent from a Databricks workspace:
+
+- Totals checks skip columns where a total means nothing. `numeric-total-moved` and diff summaries now ignore keys and columns that look like IDs, codes, years and other date parts, coordinates, ratings, scores or rates, so a real move in `sum(bed_count)` is no longer buried under `sum(established_year)`. Choose exactly with `measures: [...]` per table, or `measures: all` for the old behaviour. Rules that name a column still check it.
+- Slack alerts can @-mention reviewers: map owners to Slack member or group ids under `notify.mentions`.
+- Alerts link back to the run: the Databricks job run when the check runs in a job (new), the PR or Actions run in GitHub, or any URL in `BRICKSENTRY_RUN_URL` / `notify.run_url`.
+- New `bricksentry test-alert` sends a clearly labelled sample alert to check the webhook setup (`--verdict`, `--owner`). Exits 1 if delivery fails.
+- More robust delivery: one retry when Slack or Teams answers 429 or 5xx or the connection fails; clear messages for revoked webhooks (404/410); the webhook URL never appears in an error; Slack text is escaped so table names or values can't break or inject formatting; long reasons are clipped. Teams cards use plain text runs, so names like `my_table_name` show exactly. Bad `notify.on` or `mentions` values give a clear error.
+- Config typos are reported. Unknown keys in bricksentry.yml (top level, `tables`, `notify`, `lineage`) print a warning with the closest valid key; also warns about tables without keys, short table names on Databricks, and webhook URLs written into the file.
+- `bricksentry-mcp --help` shows `Usage: bricksentry-mcp [OPTIONS]`, and the MCP server reports the bricksentry version to clients (the version used to be empty).
+
 ## 0.1.7 (2026-11-11)
 
 - New companion package `bricksentry-mcp`: `uvx bricksentry-mcp --config /full/path/bricksentry.yml` starts the MCP server with everything it needs. Before, `uvx bricksentry mcp` installed the package without its MCP extra and failed, and that is what MCP Registry clients ran. The registry listing now points at `bricksentry-mcp`.

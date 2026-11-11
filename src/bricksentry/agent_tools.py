@@ -163,7 +163,7 @@ def explain_diff(
         d = s.get_diff(table)
         if d is None:
             return {"error": f"no diff for {table} yet; call assess_change or preview_write first"}
-        return {"table": table, "explanation": _explain_diff(d)}
+        return {"table": table, "explanation": _explain_diff(d, s.config.spec(table).measures)}
     return {"error": "pass assessment_id or table"}
 
 

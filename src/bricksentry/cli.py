@@ -18,10 +18,17 @@ from bricksentry.config import Config
 from bricksentry.models import Verdict
 
 
+def _config(config_path) -> Config:
+    cfg = Config.load(config_path, warn=False)
+    for w in cfg.warnings:
+        click.echo(click.style("warning: ", fg="yellow") + w, err=True)
+    return cfg
+
+
 def _sentry(config_path):
     from bricksentry.assess import Sentry
 
-    return Sentry(Config.load(config_path))
+    return Sentry(_config(config_path))
 
 
 def _emit(obj, fmt: str, markdown_fn=None):
@@ -65,7 +72,7 @@ def diff(base, candidate, keys, sample_pct, fmt, config_path):
 
     s = _sentry(config_path)
     d = s.diff(base, candidate, keys=list(keys) or None, table=base, sample_pct=sample_pct)
-    _emit(d.to_dict() if fmt == "json" else explain_diff(d), fmt)
+    _emit(d.to_dict() if fmt == "json" else explain_diff(d, s.config.spec(base).measures), fmt)
 
 
 @main.command()
@@ -220,10 +227,13 @@ candidate_pattern: "{catalog}.{schema}_pr_{pr}.{table}"
 # sample_pct: 10           # diff a deterministic 10% key sample on big tables
 
 # Optional Slack / Teams alerts. Keep webhook URLs in environment variables or CI secrets.
+# Test with: bricksentry test-alert
 # notify:
 #   on: needs_human
 #   slack_webhook: env:SLACK_WEBHOOK_URL
 #   teams_webhook: env:TEAMS_WEBHOOK_URL
+#   mentions:                    # owner -> Slack id, so reviewers get @-mentioned
+#     finance-analytics: S0123ABCD
 
 lineage:
   depth: 3
@@ -233,6 +243,7 @@ tables:
   main.sales.orders:
     keys: [order_id]
     segment_by: [region]
+    measures: [amount, quantity]   # totals worth checking; IDs, years and ratings are skipped by default
     paths: ["src/pipelines/orders/**", "resources/orders_job.yml"]
 
 policy: policy.yml
@@ -292,10 +303,38 @@ def policies(name):
     click.echo("\nUse one with `policy: builtin:<name>` in bricksentry.yml, or `bricksentry init --policy <name>`.")
 
 
-def entry() -> None:
-    """Console entry point: turn unexpected errors into a clean message and exit code 2."""
+@main.command("test-alert")
+@click.option("--verdict", type=click.Choice([v.value for v in Verdict]), default="needs_human", show_default=True,
+              help="Verdict of the sample alert")
+@click.option("--owner", default=None,
+              help="Reviewer to show. Use a name from notify.mentions to check that @-mentions work.")
+@config_opt
+def test_alert(verdict, owner, config_path):
+    """Send a clearly labelled sample alert to your Slack / Teams webhooks.
+
+    Reads no tables. Exits 1 if a webhook failed or none is configured."""
+    from bricksentry.notify import NotifySettings, sample_assessment, send
+
+    cfg = _config(config_path)
     try:
-        main(standalone_mode=False)
+        settings = NotifySettings.from_config(cfg.notify)
+    except ValueError as e:
+        raise click.UsageError(str(e)) from e
+    if not settings.enabled:
+        raise click.ClickException(
+            "no webhook configured: set BRICKSENTRY_SLACK_WEBHOOK or BRICKSENTRY_TEAMS_WEBHOOK, "
+            "or add notify: to bricksentry.yml"
+        )
+    lines = send(sample_assessment(Verdict(verdict), owner), settings, force=True)
+    for line in lines:
+        click.echo(line)
+    if any(not line.endswith(": sent") for line in lines):
+        sys.exit(1)
+
+
+def _run(cmd: click.Command, prog_name: str | None = None) -> None:
+    try:
+        cmd.main(prog_name=prog_name, standalone_mode=False)
     except click.exceptions.Exit as e:
         sys.exit(e.exit_code)
     except click.ClickException as e:
@@ -310,10 +349,14 @@ def entry() -> None:
         sys.exit(2)
 
 
+def entry() -> None:
+    """Console entry point: turn unexpected errors into a clean message and exit code 2."""
+    _run(main)
+
+
 def mcp_entry() -> None:
     """Console entry for the ``bricksentry-mcp`` package: same as ``bricksentry mcp``."""
-    sys.argv = [sys.argv[0], "mcp", *sys.argv[1:]]
-    entry()
+    _run(mcp, prog_name="bricksentry-mcp")
 
 
 if __name__ == "__main__":  # pragma: no cover

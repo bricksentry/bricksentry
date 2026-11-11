@@ -6,6 +6,7 @@ but the verdict never depends on it.
 
 from __future__ import annotations
 
+from bricksentry.measures import is_measure
 from bricksentry.models import ImpactNode, TableDiff
 
 
@@ -13,7 +14,7 @@ def _n(x: int) -> str:
     return f"{x:,}"
 
 
-def explain_diff(d: TableDiff) -> str:
+def explain_diff(d: TableDiff, measures: list[str] | str | None = None) -> str:
     if d.error:
         return f"{d.table}: the diff could not run ({d.error})."
     if d.is_identical:
@@ -46,7 +47,11 @@ def explain_diff(d: TableDiff) -> str:
     if top:
         s += ". Most changed: " + ", ".join(f"{c.column} ({_n(c.changed_rows)})" for c in top)
 
-    moved = [c for c in d.columns if c.sum_change_pct is not None and abs(c.sum_change_pct) >= 0.01]
+    moved = [
+        c for c in d.columns
+        if c.sum_change_pct is not None and abs(c.sum_change_pct) >= 0.01
+        and is_measure(c.column, d.keys, measures)
+    ]
     moved.sort(key=lambda c: -abs(c.sum_change_pct or 0))
     if moved:
         s += ". Totals: " + ", ".join(f"sum({c.column}) {c.sum_change_pct:+.2f}%" for c in moved[:3])
