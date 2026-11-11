@@ -27,6 +27,17 @@ An AI agent changes a 20,000-row revenue table. bricksentry previews its DELETE 
 
 ## Run it in your Databricks workspace
 
+### What did your last pipeline run do? (10 minutes, read-only)
+
+> **Check-my-table notebook:** in your workspace, go to **Workspace → Import → URL** and paste
+> `https://raw.githubusercontent.com/bricksentry/bricksentry/main/examples/databricks/bricksentry_check_my_table.py`
+
+Point the [check-my-table notebook](examples/databricks/bricksentry_check_my_table.py) at a Delta table your pipeline writes to. It finds the latest data change in the table's history (a WRITE, MERGE, UPDATE or DELETE), compares it with the version before, and shows the verdict a reviewer would have seen before that change shipped: rows added, removed and changed, duplicate keys, totals that moved, what depends on the table, and the `RESTORE` command to undo it. Your table is only read; the comparison uses two shallow clones in a scratch schema, dropped at the end.
+
+If it shows you something, please [share what it found](https://github.com/bricksentry/bricksentry/issues/new?template=it_caught_this.yml) (no table names needed). Real results decide what gets built next.
+
+### Guided tour on demo data
+
 > **Databricks quickstart notebook:** in your workspace, go to **Workspace → Import → URL** and paste
 > `https://raw.githubusercontent.com/bricksentry/bricksentry/main/examples/databricks/bricksentry_quickstart.py`
 
@@ -147,7 +158,7 @@ Check out with `fetch-depth: 0` and give the job `pull-requests: write` permissi
 Or use the bundled GitHub Action, which also writes the report to the job summary:
 
 ```yaml
-- uses: bricksentry/bricksentry@v0.1.8
+- uses: bricksentry/bricksentry@v0.1.9
   with:
     config: bricksentry.yml
     fail-on: needs_human
@@ -172,7 +183,7 @@ jobs:
           fetch-depth: 0
       # Build this PR's version of your pipeline into a per-PR schema first,
       # for example: databricks bundle deploy -t ci && databricks bundle run -t ci
-      - uses: bricksentry/bricksentry@v0.1.8
+      - uses: bricksentry/bricksentry@v0.1.9
         with:
           config: bricksentry.yml
           fail-on: needs_human
@@ -296,7 +307,7 @@ Use one directly with `policy: builtin:finance`, or write an editable copy with 
 
 ### Policy conditions
 
-`table` (glob) · `tag` · `downstream_tag` · `downstream_kind` · `downstream_count_gt` · `removed_pct_gt` · `added_pct_gt` · `changed_pct_gt` · `row_count_change_pct_gt` · `row_count_drop_pct_gt` · `column_removed` · `column_added` · `column_type_changed` · `duplicate_keys` · `null_keys` · `sum_change_pct_gt` / `null_increase_gt` (optionally with `column`) · `any_change` · `diff_error`
+`table` (glob) · `tag` · `downstream_tag` · `downstream_kind` · `downstream_count_gt` · `removed_pct_gt` · `added_pct_gt` · `changed_pct_gt` · `row_count_change_pct_gt` · `row_count_drop_pct_gt` · `column_removed` · `column_added` · `column_type_changed` · `duplicate_keys` · `null_keys` · `sum_change_pct_gt` / `null_increase_gt` (optionally with `column`) · `any_change` · `diff_error` · `lineage_error`
 
 All conditions in a `when` must hold. The most severe matching rule sets the verdict. Unknown conditions are rejected at load time, so a typo can't silently disable a rule.
 
@@ -304,7 +315,7 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 
 - `CAN USE` on a SQL warehouse.
 - `SELECT` on the tables you assess and their candidates.
-- `SELECT` on `system.access.table_lineage`, plus `system.information_schema` for owners and tags. Without these, bricksentry still diffs; lineage is just empty.
+- `SELECT` on `system.access.table_lineage`, plus `system.information_schema` for owners and tags. Without lineage access bricksentry still diffs, and adds a `lineage-unavailable` warning (blast radius unknown) instead of guessing.
 - `CREATE TABLE` on `sandbox_schema`, for `preview_write`.
 
 ## Known limits (v0.1.x)

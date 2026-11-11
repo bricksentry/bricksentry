@@ -1,4 +1,4 @@
-"""Build examples/databricks/bricksentry_quickstart.ipynb from the Databricks source notebook.
+"""Build the .ipynb copies of the Databricks source notebooks in examples/databricks.
 
     python scripts/build_notebook.py
 
@@ -11,7 +11,11 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "examples" / "databricks" / "bricksentry_quickstart.py"
+SOURCES = [
+    ROOT / "examples" / "databricks" / "bricksentry_quickstart.py",
+    ROOT / "examples" / "databricks" / "bricksentry_check_my_table.py",
+]
+SRC = SOURCES[0]
 OUT = SRC.with_suffix(".ipynb")
 
 
@@ -43,13 +47,13 @@ def _code(lines: list[str]) -> dict:
     return {"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": _src(lines)}
 
 
-def build() -> dict:
+def build(src: Path = SRC) -> dict:
     return {
-        "cells": cells_from_source(SRC.read_text()),
+        "cells": cells_from_source(src.read_text()),
         "metadata": {
             "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
             "language_info": {"name": "python"},
-            "application/vnd.databricks.v1+notebook": {"notebookName": "bricksentry_quickstart", "language": "python"},
+            "application/vnd.databricks.v1+notebook": {"notebookName": src.stem, "language": "python"},
         },
         "nbformat": 4,
         "nbformat_minor": 5,
@@ -57,5 +61,6 @@ def build() -> dict:
 
 
 if __name__ == "__main__":
-    OUT.write_text(json.dumps(build(), indent=1, ensure_ascii=False) + "\n")
-    print("wrote", OUT.relative_to(ROOT))
+    for src in SOURCES:
+        src.with_suffix(".ipynb").write_text(json.dumps(build(src), indent=1, ensure_ascii=False) + "\n")
+        print("wrote", src.with_suffix(".ipynb").relative_to(ROOT))

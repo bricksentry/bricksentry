@@ -1,0 +1,65 @@
+name: What bricksentry found
+description: Share what a check caught, missed or got wrong on your data. Two minutes, and it shapes what gets built next.
+title: "[check] "
+labels: [field-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying bricksentry on real data. Please **leave out anything private**: table, column and
+        workspace names are not needed. Numbers and rule names are enough.
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: How did it do?
+      options:
+        - It caught a real problem
+        - It confirmed a change was safe
+        - It flagged something that was fine (false alarm)
+        - It missed a problem
+        - It failed to run
+    validations:
+      required: true
+  - type: input
+    id: verdict
+    attributes:
+      label: Verdict
+      placeholder: pass / warn / needs_human / block
+  - type: input
+    id: rules
+    attributes:
+      label: Rules that fired
+      placeholder: e.g. duplicate-keys (block); row-loss (needs_human)
+  - type: textarea
+    id: facts
+    attributes:
+      label: What changed
+      description: Rows added, removed and changed, downstream assets. The notebook fills this in for you.
+  - type: textarea
+    id: story
+    attributes:
+      label: What happened, in your words
+      description: What the change was meant to do, and what bricksentry told you. What would you have liked it to say?
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did you run it?
+      options:
+        - check-my-table notebook
+        - quickstart notebook
+        - CLI or CI (GitHub Actions)
+        - An AI agent over MCP
+        - Python API
+  - type: input
+    id: version
+    attributes:
+      label: bricksentry version
+      placeholder: "bricksentry --version"
+  - type: checkboxes
+    id: contact
+    attributes:
+      label: Follow-up
+      options:
+        - label: I'm happy to talk for 20 minutes about how my team ships data changes

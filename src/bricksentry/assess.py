@@ -96,15 +96,21 @@ class Sentry:
                     diff = self.diff(table, cand, table=table)
                 except Exception as e:  # report, don't crash: an agent needs a verdict
                     err = str(e)
+            lineage_err: str | None = None
             try:
                 nodes = self.downstream(table)
-            except Exception as e:
+            except Exception as e:  # e.g. no SELECT on system.access.table_lineage
                 nodes = []
-                err = err or f"lineage lookup failed: {e}"
+                lineage_err = _first_line(e)
             owner, tags = self.lineage.owner_and_tags(table)
             measures = self.config.spec(table).measures
-            verdict, hits = self.policy.evaluate(table, diff, nodes, tags, diff_error=err, measures=measures)
-            summary = (explain_diff(diff, measures) if diff else f"{table}: diff unavailable ({err}).") + " " + explain_impact(table, nodes)
+            verdict, hits = self.policy.evaluate(
+                table, diff, nodes, tags, diff_error=err, measures=measures, lineage_error=lineage_err
+            )
+            summary = (explain_diff(diff, measures) if diff else f"{table}: diff unavailable ({err}).") + " " + (
+                f"{table}: blast radius unknown, lineage lookup failed ({lineage_err})."
+                if lineage_err else explain_impact(table, nodes)
+            )
             ta = TableAssessment(
                 table=table,
                 diff=diff,
@@ -204,3 +210,9 @@ class Sentry:
 
     def get_diff(self, table: str) -> TableDiff | None:
         return self._diffs.get(table)
+
+
+def _first_line(e: Exception, limit: int = 200) -> str:
+    """A short, single-line error for verdict reasons and alerts."""
+    text = (str(e).strip().splitlines() or [type(e).__name__])[0]
+    return text if len(text) <= limit else text[: limit - 1] + "…"

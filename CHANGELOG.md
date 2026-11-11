@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.9 (2026-11-11)
+
+- New notebook: **what did my last pipeline run do?** Point it at a Delta table; it finds the latest data change in the table's history, compares it with the version before using two shallow clones, and shows the verdict, rules, blast radius and the `RESTORE` command. Read-only on your table. Import from `examples/databricks/bricksentry_check_my_table.py`.
+- New issue form, "What bricksentry found", for sharing what a check caught, missed or got wrong. The notebook prefills it without table or column names.
+- Fix: when the lineage lookup failed (for example no `SELECT` on `system.access.table_lineage`), the verdict said "diff could not run" and was raised to `needs_human`, although the diff had run. Now it adds a `lineage-unavailable` hit with a one-line reason and the summary says the blast radius is unknown. It is a `warn` in the default and finance policies and `needs_human` in strict, agent-safe, pii and certified. New policy condition: `lineage_error`.
+
 ## 0.1.8 (2026-11-11)
 
 From the first real Slack alert sent from a Databricks workspace:

@@ -38,6 +38,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             "notify_owners_on": "warn",
             "rules": [
                 {"name": "diff-failed", "when": {"diff_error": True}, "then": "block"},
+                {"name": "lineage-unavailable", "when": {"lineage_error": True}, "then": "needs_human"},
                 {"name": "duplicate-keys", "when": {"duplicate_keys": True}, "then": "block"},
                 {"name": "null-keys", "when": {"null_keys": True}, "then": "needs_human"},
                 {"name": "dropped-column", "when": {"column_removed": True}, "then": "block"},
@@ -58,6 +59,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             "notify_owners_on": "needs_human",
             "rules": [
                 {"name": "diff-failed", "when": {"diff_error": True}, "then": "block"},
+                {"name": "lineage-unavailable", "when": {"lineage_error": True}, "then": "needs_human"},
                 {"name": "duplicate-keys", "when": {"duplicate_keys": True}, "then": "block"},
                 {"name": "dropped-column", "when": {"column_removed": True}, "then": "block"},
                 {"name": "null-keys", "when": {"null_keys": True}, "then": "needs_human"},
@@ -78,6 +80,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             "default": "pass",
             "notify_owners_on": "needs_human",
             "rules": _CORE + [
+                {"name": "lineage-unavailable", "when": {"lineage_error": True}, "then": "needs_human"},
                 {"name": "pii-table-changed", "when": {"tag": "pii", "any_change": True}, "then": "needs_human"},
                 {"name": "pii-new-column", "when": {"tag": "pii", "column_added": True}, "then": "needs_human"},
                 {"name": "pii-downstream", "when": {"downstream_tag": "pii", "any_change": True}, "then": "needs_human"},
@@ -91,6 +94,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             "default": "pass",
             "notify_owners_on": "needs_human",
             "rules": _CORE + [
+                {"name": "lineage-unavailable", "when": {"lineage_error": True}, "then": "needs_human"},
                 {"name": "certified-table-changed", "when": {"tag": "certified", "any_change": True}, "then": "needs_human"},
                 {"name": "certified-schema-change", "when": {"tag": "certified", "column_type_changed": True}, "then": "block"},
                 {"name": "certified-downstream", "when": {"downstream_tag": "certified", "any_change": True}, "then": "needs_human"},
@@ -105,6 +109,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
             "default": "pass",
             "notify_owners_on": "needs_human",
             "rules": _CORE + [
+                {"name": "lineage-unavailable", "when": {"lineage_error": True}, "then": "warn"},
                 {"name": "numeric-total-moved", "when": {"sum_change_pct_gt": 0.5}, "then": "needs_human"},
                 {"name": "row-loss", "when": {"removed_pct_gt": 0.1}, "then": "needs_human"},
                 {"name": "row-count-drop", "when": {"row_count_drop_pct_gt": 0.1}, "then": "needs_human"},

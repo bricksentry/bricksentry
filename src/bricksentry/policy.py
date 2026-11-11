@@ -44,6 +44,7 @@ DEFAULT_POLICY: dict[str, Any] = {
     "notify_owners_on": "needs_human",
     "rules": [
         {"name": "diff-failed", "when": {"diff_error": True}, "then": "needs_human"},
+        {"name": "lineage-unavailable", "when": {"lineage_error": True}, "then": "warn"},
         {"name": "duplicate-keys", "when": {"duplicate_keys": True}, "then": "block"},
         {"name": "null-keys", "when": {"null_keys": True}, "then": "warn"},
         {"name": "dropped-column", "when": {"column_removed": True}, "then": "needs_human"},
@@ -63,7 +64,7 @@ KNOWN_CONDITIONS = {
     "removed_pct_gt", "added_pct_gt", "changed_pct_gt", "row_count_change_pct_gt",
     "row_count_drop_pct_gt", "column_removed", "column_type_changed", "column_added",
     "duplicate_keys", "null_keys", "column", "sum_change_pct_gt", "null_increase_gt",
-    "any_change", "diff_error",
+    "any_change", "diff_error", "lineage_error",
 }
 
 
@@ -91,10 +92,11 @@ class Policy:
         tags: dict[str, str],
         diff_error: str | None = None,
         measures: list[str] | str | None = None,
+        lineage_error: str | None = None,
     ) -> tuple[Verdict, list[RuleHit]]:
         hits: list[RuleHit] = []
         for r in self.rules:
-            ok, reason = _match(r.get("when") or {}, table, diff, downstream, tags, diff_error, measures)
+            ok, reason = _match(r.get("when") or {}, table, diff, downstream, tags, diff_error, measures, lineage_error)
             if ok:
                 hits.append(RuleHit(rule=r.get("name", "unnamed"), verdict=Verdict(r.get("then", "warn")), table=table, reason=reason))
         verdict = Verdict.worst([self.default] + [h.verdict for h in hits])
@@ -121,6 +123,7 @@ def _match(
     tags: dict[str, str],
     diff_error: str | None,
     measures: list[str] | str | None = None,
+    lineage_error: str | None = None,
 ) -> tuple[bool, str]:
     reasons: list[str] = []
     for cond, val in when.items():
@@ -130,6 +133,11 @@ def _match(
             if bool(diff_error) != bool(val):
                 return False, ""
             reasons.append(f"diff could not run: {diff_error}")
+            continue
+        if cond == "lineage_error":
+            if bool(lineage_error) != bool(val):
+                return False, ""
+            reasons.append(f"blast radius unknown, lineage lookup failed: {lineage_error}")
             continue
         if cond == "table":
             if not fnmatch.fnmatch(table.lower(), str(val).lower()):
