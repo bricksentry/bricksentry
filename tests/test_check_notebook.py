@@ -48,6 +48,9 @@ class FakeDelta(DuckDBBackend):
         p = table.split(".")
         return table if len(p) < 3 else f"{p[0]}_{p[1]}.{p[2]}"
 
+    def ensure_schema(self, schema):  # catalog.schema -> catalog_schema, created in __init__
+        assert schema == "main.scratch"
+
     def query(self, sql):
         if sql.startswith("DESCRIBE HISTORY"):
             return HISTORY
