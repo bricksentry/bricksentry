@@ -173,7 +173,7 @@ def test_mcp_entry_runs_the_mcp_command(monkeypatch):
 
     seen = {}
     monkeypatch.setattr(sys, "argv", ["bricksentry-mcp", "--transport", "sse"])
-    monkeypatch.setattr(ms, "serve", lambda transport: seen.setdefault("transport", transport))
+    monkeypatch.setattr(ms, "serve", lambda transport, **kw: seen.setdefault("transport", transport))
     cli.mcp_entry()
     assert seen["transport"] == "sse"
 

@@ -45,7 +45,10 @@ TOP_LEVEL_KEYS = {
 }
 TABLE_KEYS = {"keys", "key", "segment_by", "paths", "candidate", "measures"}
 NOTIFY_KEYS = {"on", "slack_webhook", "teams_webhook", "mentions", "run_url"}
-LINEAGE_KEYS = {"depth", "lookback_days"}
+LINEAGE_KEYS = {
+    "type", "depth", "lookback_days", "lineage_table", "tables_table", "tags_table", "max_nodes",
+    "exclude", "exclude_dropped", "edges", "owners", "tags",
+}
 
 
 def _unknown(where: str, given: Any, known: set[str]) -> list[str]:

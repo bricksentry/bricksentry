@@ -1,0 +1,26 @@
+# Deploy with Databricks Asset Bundles:
+#   databricks bundle deploy --var warehouse_id=<your-sql-warehouse-id>
+#   databricks bundle run bricksentry_mcp
+bundle:
+  name: bricksentry-mcp
+
+variables:
+  warehouse_id:
+    description: SQL warehouse bricksentry runs its checks on
+
+resources:
+  apps:
+    bricksentry_mcp:
+      name: mcp-bricksentry
+      description: bricksentry MCP server - checks what a data change does before it ships
+      source_code_path: .
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+
+targets:
+  dev:
+    default: true
+    mode: development

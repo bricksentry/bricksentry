@@ -116,6 +116,17 @@ The same tools are plain Python functions in `bricksentry.agent_tools`, so you c
 
 To watch the whole loop, run `bricksentry demo` (see the top of this page). `bricksentry demo --report report.md` also writes the pull-request comment a reviewer would see.
 
+### Host it in your workspace (Databricks Apps)
+
+Run the MCP server as a Databricks App so every agent in your workspace can reach it over HTTPS, with no tokens to manage: it runs as the app's service principal, and Unity Catalog grants decide what it can read. [`deploy/databricks-app`](deploy/databricks-app) is a ready app (`app.yaml`, an Asset Bundle, the grants) that deploys with two commands:
+
+```bash
+databricks bundle deploy --var warehouse_id=<your-sql-warehouse-id>
+databricks bundle run bricksentry_mcp
+```
+
+Agents connect to `https://<app-url>/mcp`. The kit starts the server with `--read-only`, which leaves out `preview_write`, so the app never writes. On any other host, `bricksentry mcp --transport streamable-http --host 0.0.0.0 --port 8000` serves the same endpoint. Unity Catalog *MCP Services* are for servers hosted outside Databricks, so a Databricks App is the recommended way to run bricksentry inside it; see the [kit's README](deploy/databricks-app/README.md).
+
 ## For data engineers: CLI and CI
 
 ```bash
@@ -158,7 +169,7 @@ Check out with `fetch-depth: 0` and give the job `pull-requests: write` permissi
 Or use the bundled GitHub Action, which also writes the report to the job summary:
 
 ```yaml
-- uses: bricksentry/bricksentry@v0.1.9
+- uses: bricksentry/bricksentry@v0.1.10
   with:
     config: bricksentry.yml
     fail-on: needs_human
@@ -183,7 +194,7 @@ jobs:
           fetch-depth: 0
       # Build this PR's version of your pipeline into a per-PR schema first,
       # for example: databricks bundle deploy -t ci && databricks bundle run -t ci
-      - uses: bricksentry/bricksentry@v0.1.9
+      - uses: bricksentry/bricksentry@v0.1.10
         with:
           config: bricksentry.yml
           fail-on: needs_human

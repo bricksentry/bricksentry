@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.10 (2026-11-11)
+
+- **Run the MCP server as a Databricks App.** New kit in `deploy/databricks-app`: `app.yaml`, an Asset Bundle with the SQL warehouse resource, a pinned `requirements.txt`, a starter `bricksentry.yml` and the Unity Catalog grants for the app's service principal. Deploy with `databricks bundle deploy` and `databricks bundle run`; agents connect to `https://<app-url>/mcp`.
+- `bricksentry mcp --transport streamable-http` now listens on `0.0.0.0:$DATABRICKS_APP_PORT` on Databricks Apps, and takes `--host` / `--port` (or `BRICKSENTRY_HOST` / `BRICKSENTRY_PORT`) elsewhere. It runs stateless, so it works behind a load balancer.
+- New `--read-only` (or `BRICKSENTRY_READ_ONLY=1`) leaves out `preview_write`, so a shared server never writes, not even to a sandbox clone.
+- Fix: with mcp 1.x, the HTTP server rejected requests that came through a proxy (HTTP 421) because localhost-only host checking stayed on. It now applies only when listening on localhost, as in mcp 2.
+- Fix: the config typo warnings added in 0.1.8 flagged valid lineage settings such as `lineage.type`, `exclude` and `exclude_dropped`. All lineage keys bricksentry reads are now recognised, and a test keeps the list in sync with the code.
+
 ## 0.1.9 (2026-11-11)
 
 - New notebook: **what did my last pipeline run do?** Point it at a Delta table; it finds the latest data change in the table's history, compares it with the version before using two shallow clones, and shows the verdict, rules, blast radius and the `RESTORE` command. Read-only on your table. Import from `examples/databricks/bricksentry_check_my_table.py`.

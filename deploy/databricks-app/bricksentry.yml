@@ -1,0 +1,21 @@
+# bricksentry config for the Databricks App. The warehouse comes from the app's
+# sql-warehouse resource (DATABRICKS_WAREHOUSE_ID); auth is the app's service principal.
+backend:
+  type: databricks
+lineage:
+  type: databricks
+  depth: 3
+  lookback_days: 90
+sandbox_schema: main.bricksentry_sandbox     # only used if you remove --read-only from app.yaml
+policy: builtin:agent-safe                   # see `bricksentry policies`
+
+# Tables agents may assess, with the keys that identify a row.
+# assess_change needs keys for a table; preview_write can also take them as an argument.
+tables:
+  main.sales.orders:
+    keys: [order_id]
+
+# Optional: post needs_human / block verdicts to Slack. Add the webhook as an app secret
+# and expose it with `valueFrom` in app.yaml, then uncomment:
+# notify:
+#   slack_webhook: env:BRICKSENTRY_SLACK_WEBHOOK

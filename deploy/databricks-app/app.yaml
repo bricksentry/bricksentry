@@ -1,0 +1,10 @@
+# Databricks Apps entry point for the bricksentry MCP server.
+# The app listens on $DATABRICKS_APP_PORT (bricksentry picks it up) and serves MCP at /mcp.
+# --read-only leaves out preview_write, so agents can check changes but the app never writes.
+# Remove it to allow previews on sandbox clones (needs CREATE TABLE on sandbox_schema, see grants.sql).
+command: ["bricksentry", "mcp", "--transport", "streamable-http", "--read-only", "--config", "bricksentry.yml"]
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse          # the SQL warehouse resource added to the app
+  - name: BRICKSENTRY_STORE
+    value: /tmp/bricksentry/assessments

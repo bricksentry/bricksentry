@@ -202,15 +202,24 @@ def rollback(table, config_path):
 
 
 @main.command()
-@click.option("--transport", type=click.Choice(["stdio", "sse", "streamable-http"]), default="stdio")
+@click.option("--transport", type=click.Choice(["stdio", "sse", "streamable-http"]), default="stdio",
+              show_default=True, help="stdio for local agents; streamable-http to serve over HTTP (e.g. Databricks Apps)")
+@click.option("--host", default=None,
+              help="HTTP only. Default 127.0.0.1, or 0.0.0.0 on Databricks Apps. Env: BRICKSENTRY_HOST")
+@click.option("--port", type=int, default=None,
+              help="HTTP only. Default 8000, or $DATABRICKS_APP_PORT on Databricks Apps. Env: BRICKSENTRY_PORT")
+@click.option("--read-only", is_flag=True, default=False,
+              help="Leave out preview_write, so the server never writes, not even to a sandbox clone. "
+                   "Env: BRICKSENTRY_READ_ONLY=1")
 @config_opt
-def mcp(transport, config_path):
+def mcp(transport, host, port, read_only, config_path):
     """Start the MCP server for AI agents."""
     if config_path:
         os.environ["BRICKSENTRY_CONFIG"] = str(Path(config_path).resolve())
+    read_only = read_only or os.environ.get("BRICKSENTRY_READ_ONLY", "").strip().lower() in ("1", "true", "yes")
     from bricksentry.mcp_server import serve
 
-    serve(transport)
+    serve(transport, host=host, port=port, read_only=read_only)
 
 
 _INIT_CONFIG = """# bricksentry configuration
