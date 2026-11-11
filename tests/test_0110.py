@@ -169,3 +169,43 @@ def test_documented_lineage_config_has_no_warnings():
 
     assert config_warnings({"lineage": {"type": "databricks", "depth": 3, "lookback_days": 90,
                                         "exclude": ["*_sandbox.*"], "exclude_dropped": True}}) == []
+
+
+def test_databricks_auth_failure_gives_one_clear_message(monkeypatch):
+    pytest.importorskip("databricks.sdk")
+    import databricks.sdk as sdk
+
+    from bricksentry.backends.databricks_backend import DatabricksBackend
+
+    class Boom:
+        def __init__(self, *a, **k):
+            raise AttributeError("'NoneType' object has no attribute 'parent_header'\n  long sdk trace")
+
+    monkeypatch.setattr(sdk, "WorkspaceClient", Boom)
+    with pytest.raises(ValueError) as e:
+        DatabricksBackend(warehouse_id="abc123")
+    msg = str(e.value)
+    assert msg.startswith("Could not sign in to Databricks")
+    assert "parent_header" in msg and "long sdk trace" not in msg
+    assert "DATABRICKS_HOST" in msg and "databricks auth login" in msg
+
+
+def test_cli_shows_the_auth_message_without_a_traceback(monkeypatch, tmp_path, capsys):
+    pytest.importorskip("databricks.sdk")
+    import databricks.sdk as sdk
+
+    from bricksentry import cli
+
+    class Boom:
+        def __init__(self, *a, **k):
+            raise AttributeError("'NoneType' object has no attribute 'parent_header'")
+
+    monkeypatch.setattr(sdk, "WorkspaceClient", Boom)
+    cfg = tmp_path / "bricksentry.yml"
+    cfg.write_text("backend: {type: databricks, warehouse_id: abc123}\n")
+    monkeypatch.setattr("sys.argv", ["bricksentry", "impact", "main.sales.orders", "-c", str(cfg)])
+    with pytest.raises(SystemExit) as e:
+        cli.entry()
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "Could not sign in to Databricks" in err and "Traceback" not in err

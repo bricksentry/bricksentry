@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.11 (2026-11-11)
+
+From a full live test of 0.1.9 on Databricks serverless:
+
+- Fix: when the Databricks SDK could not find credentials, the CLI showed the SDK's raw error. Run as a subprocess of a notebook it failed with a cryptic `parent_header` error. It now says it could not sign in to Databricks, lists the ways to provide credentials, and suggests the Python API inside notebooks.
+- The `lineage.type` false warning that test also found was already fixed in 0.1.10.
+
 ## 0.1.10 (2026-11-11)
 
 - **Run the MCP server as a Databricks App.** New kit in `deploy/databricks-app`: `app.yaml`, an Asset Bundle with the SQL warehouse resource, a pinned `requirements.txt`, a starter `bricksentry.yml` and the Unity Catalog grants for the app's service principal. Deploy with `databricks bundle deploy` and `databricks bundle run`; agents connect to `https://<app-url>/mcp`.

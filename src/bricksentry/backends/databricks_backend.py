@@ -43,7 +43,10 @@ class DatabricksBackend(Backend):
                 from databricks.sdk import WorkspaceClient
             except ImportError as e:  # pragma: no cover
                 raise ImportError("Databricks backend needs `pip install bricksentry[databricks]`") from e
-            client = WorkspaceClient(profile=profile) if profile else WorkspaceClient()
+            try:
+                client = WorkspaceClient(profile=profile) if profile else WorkspaceClient()
+            except Exception as e:
+                raise ValueError(_auth_help(e, profile)) from None
         self.client = client
         self.timeout_s = timeout_s
 
@@ -138,6 +141,21 @@ class DatabricksBackend(Backend):
             return None
         v = rows[0].get("version")
         return int(v) if v is not None else None
+
+
+def _auth_help(e: Exception, profile: str | None) -> str:
+    """One clear message when the Databricks SDK can't find credentials.
+
+    The SDK's own errors can be long or cryptic: for example a CLI started as a subprocess
+    of a notebook fails inside the notebook-auth code with a `parent_header` error."""
+    detail = (str(e).strip().splitlines() or [type(e).__name__])[0][:200]
+    what = f"credentials for profile {profile!r} in ~/.databrickscfg" if profile else "Databricks credentials"
+    return (
+        f"Could not sign in to Databricks: no usable {what} were found ({detail}). "
+        "Set DATABRICKS_HOST plus DATABRICKS_TOKEN (or DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET), "
+        "or run `databricks auth login`. In a notebook, use the Python API (from bricksentry import Sentry) "
+        "instead of calling the CLI in a subprocess, which can't use the notebook's credentials."
+    )
 
 
 def _state(resp: Any) -> str:
