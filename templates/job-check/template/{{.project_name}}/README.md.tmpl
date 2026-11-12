@@ -26,6 +26,12 @@ The job's identity needs `SELECT` on the tables, `USE` and `CREATE TABLE` on
 lineage){{if .slack_secret}}, and `READ` on the secret scope{{end}}. Table history must still be there
 (not removed by `VACUUM`).
 
+## Upgrading bricksentry
+
+The job installs `bricksentry[databricks]=={{.bricksentry_version}}`. Serverless resolves a job's
+dependencies once and caches them, so to upgrade, change that version in
+`resources/bricksentry_check.job.yml` and run `databricks bundle deploy` again.
+
 ## Slack alerts
 
 ```bash
@@ -55,7 +61,7 @@ writes the table:
           depends_on: [{task_key: bricksentry_check}]
       environments:
         - environment_key: bricksentry
-          spec: {environment_version: "2", dependencies: ["bricksentry[databricks]>=0.1.15"]}
+          spec: {environment_version: "2", dependencies: ["bricksentry[databricks]=={{.bricksentry_version}}"]}
 ```
 
 `--since {{`{{job.start_time.iso_datetime}}`}}` checks everything this run wrote as one change.

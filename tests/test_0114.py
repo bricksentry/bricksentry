@@ -113,8 +113,10 @@ def test_check_change_end_to_end():
     assert t.rollback == 'RESTORE TABLE "sales"."orders" TO VERSION AS OF 2'
     assert t.summary.startswith("v2 -> v3 (MERGE): ")
     assert [n.name for n in t.downstream] == ["sales.daily_revenue"]
-    assert db.dropped == ["scratch.bs_check_orders_v2", "scratch.bs_check_orders_v3"]
-    assert not db.table_exists("scratch.bs_check_orders_v3")
+    assert [re.sub(r"_[0-9a-f]{8}$", "", d) for d in db.dropped] == [
+        "scratch.bs_check_orders_v2", "scratch.bs_check_orders_v3"]
+    assert db.dropped[0][-8:] == db.dropped[1][-8:]  # one run id per check
+    assert not any(db.table_exists(d) for d in db.dropped)
 
 
 def test_check_change_since_and_keys_from_config():
@@ -320,6 +322,7 @@ def test_bundle_template_renders(slack, keys):
     root = Path(__file__).resolve().parents[1] / "templates" / "job-check"
     schema = json.loads((root / "databricks_template_schema.json").read_text())
     values = {k: p.get("default", "") for k, p in schema["properties"].items()}
+    assert values["bricksentry_version"] == __import__("bricksentry").__version__
     values.update(tables="main.sales.orders, main.sales.customers", warehouse_id="abc123", slack_secret=slack,
                   keys=keys)
     for k, p in schema["properties"].items():
@@ -337,7 +340,8 @@ def test_bundle_template_renders(slack, keys):
     assert "{{workspace.url}}/jobs/{{job.id}}/runs/{{job.run_id}}" in params
     assert ("--slack-secret" in params) == bool(slack)
     assert ("--keys" in params) == bool(keys)
-    assert task["max_retries"] == 0
+    assert task["max_retries"] == 0 and task["disable_auto_optimization"] is True
+    assert j["environments"][0]["spec"]["dependencies"] == [f"bricksentry[databricks]=={values['bricksentry_version']}"]
     assert task["environment_key"] == j["environments"][0]["environment_key"]
     assert j["environments"][0]["spec"]["dependencies"][0].startswith("bricksentry[databricks]")
     # the job task's argv parses, and an unresolved trigger value falls back to --default-tables
@@ -375,3 +379,12 @@ def test_job_keys_option():
     code = job.run(["--tables", "sales.orders", "--keys", "sales.orders=order_id; sales.other=x",
                     "--scratch-schema", "scratch", "--fail-on", "never"], backend=FakeDelta(pk=()), out=lines.append)
     assert code == 0 and "sales.orders: BLOCK" in lines[0]
+
+
+def test_concurrent_checks_use_different_clones():
+    """Two checks of the same table must not share clone names (found live: one job's cleanup
+    dropped the other's clone mid-diff)."""
+    db = FakeDelta()
+    sentry(db).check_change("sales.orders")
+    sentry(db).check_change("sales.orders")
+    assert len(set(db.dropped)) == 4

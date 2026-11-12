@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.16 (2026-11-11)
+
+From the live test of 0.1.15 on Databricks serverless:
+
+- Fix: two checks of the same table at the same time (two jobs watching it, or a job and a notebook) used the same scratch clone names, so one check's cleanup could drop the other's clone mid-diff (`TABLE_OR_VIEW_NOT_FOUND`). Each check now uses its own clone names.
+- The job template's task also sets `disable_auto_optimization: true`. On serverless, auto-optimization retries failed tasks even with `max_retries: 0`, so a `block` was still run twice.
+- The job template now pins the bricksentry version (new `bricksentry_version` prompt, default the current release). Correction to the 0.1.15 release notes: a job deployed with `>=0.1.14` does **not** pick up new releases by itself, because serverless resolves a job's dependencies once and caches them. To upgrade, change the version in the job's YAML and redeploy; the generated README says so.
+
 ## 0.1.15 (2026-11-11)
 
 From the first live test of the 0.1.14 job template on Databricks serverless (deployed with `databricks bundle deploy`, started by the table update trigger and by hand):

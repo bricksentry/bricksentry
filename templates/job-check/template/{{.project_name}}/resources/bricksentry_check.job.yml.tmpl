@@ -16,7 +16,10 @@ resources:
       tasks:
         - task_key: bricksentry_check
           environment_key: default
-          max_retries: 0  # a block verdict is an answer, not a flaky failure
+          # A block verdict is an answer, not a flaky failure: no retries. On serverless,
+          # auto-optimization retries failed tasks even with max_retries: 0, so turn it off too.
+          max_retries: 0
+          disable_auto_optimization: true
           spark_python_task:
             python_file: ../src/bricksentry_check.py
             parameters:
@@ -51,4 +54,6 @@ resources:
           spec:
             environment_version: "2"
             dependencies:
-              - bricksentry[databricks]>=0.1.15
+              # Pinned: serverless resolves the dependencies once and caches them, so a range
+              # would not pick up new releases. To upgrade, change the version and redeploy.
+              - bricksentry[databricks]=={{.bricksentry_version}}

@@ -72,6 +72,14 @@
       ],
       "description": "Mark the run failed when the verdict is at least",
       "order": 8
+    },
+    "bricksentry_version": {
+      "type": "string",
+      "default": "0.1.16",
+      "description": "bricksentry version to install in the job (pinned; change it and redeploy to upgrade)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "pattern_match_failure_message": "Use a version like 0.1.16.",
+      "order": 9
     }
   },
   "success_message": "Created {{.project_name}}. Next: cd {{.project_name}} && databricks bundle deploy. See {{.project_name}}/README.md."

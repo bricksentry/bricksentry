@@ -9,6 +9,7 @@ version after), diffs them, runs lineage and policy, and returns the assessment 
 from __future__ import annotations
 
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -123,9 +124,9 @@ def pick_change(
                   str(h.get("timestamp") or ""), [h["version"]])
 
 
-def _scratch_name(schema: str, table: str, version: int) -> str:
+def _scratch_name(schema: str, table: str, version: int, run: str) -> str:
     short = re.sub(r"[^A-Za-z0-9_]", "_", table.split(".")[-1])[:40]
-    return f"{schema}.bs_check_{short}_v{version}"
+    return f"{schema}.bs_check_{short}_v{version}_{run}"
 
 
 def check_change(
@@ -154,8 +155,11 @@ def check_change(
             "or add a PRIMARY KEY constraint to the table.")
 
     scratch = sentry.config.sandbox_schema
-    base = _scratch_name(scratch, table, change.base_version)
-    cand = _scratch_name(scratch, table, change.version)
+    # Unique per check, so two checks of the same table at the same time (two jobs, or a job
+    # and a notebook) never drop each other's clones.
+    run = uuid.uuid4().hex[:8]
+    base = _scratch_name(scratch, table, change.base_version, run)
+    cand = _scratch_name(scratch, table, change.version, run)
     db.ensure_schema(scratch)
     try:
         for target, v in ((base, change.base_version), (cand, change.version)):
