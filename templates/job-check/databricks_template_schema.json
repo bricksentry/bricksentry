@@ -1,0 +1,58 @@
+{
+  "welcome_message": "bricksentry: check what every pipeline run did to your tables, alert on Slack, and get the RESTORE to undo it.",
+  "properties": {
+    "project_name": {
+      "type": "string",
+      "default": "bricksentry_check",
+      "description": "Name for this bundle (letters, digits, underscores)",
+      "pattern": "^[A-Za-z0-9_]+$",
+      "pattern_match_failure_message": "Use letters, digits and underscores only.",
+      "order": 1
+    },
+    "tables": {
+      "type": "string",
+      "description": "Tables to watch, comma-separated catalog.schema.table names (up to 10)",
+      "pattern": "^[A-Za-z0-9_]+\\.[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(\\s*,\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+\\.[A-Za-z0-9_]+){0,9}$",
+      "pattern_match_failure_message": "Enter 1 to 10 full names like main.sales.orders, separated by commas.",
+      "order": 2
+    },
+    "warehouse_id": {
+      "type": "string",
+      "description": "SQL warehouse ID (SQL Warehouses -> your warehouse -> Connection details)",
+      "pattern": "^[A-Za-z0-9]+$",
+      "pattern_match_failure_message": "Paste the warehouse ID only, e.g. 1a2b3c4d5e6f7a8b.",
+      "order": 3
+    },
+    "scratch_schema": {
+      "type": "string",
+      "default": "main.bricksentry_scratch",
+      "description": "catalog.schema for the temporary shallow clones (created if missing; clones are dropped after each check)",
+      "pattern": "^[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$",
+      "pattern_match_failure_message": "Use catalog.schema.",
+      "order": 4
+    },
+    "policy": {
+      "type": "string",
+      "default": "default",
+      "enum": ["default", "strict", "finance", "pii", "certified", "agent-safe"],
+      "description": "Policy for the verdict",
+      "order": 5
+    },
+    "slack_secret": {
+      "type": "string",
+      "default": "",
+      "description": "Slack webhook as a secret, scope/key (e.g. bricksentry/slack_webhook). Leave empty for no alerts",
+      "pattern": "^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?$",
+      "pattern_match_failure_message": "Use scope/key, or leave empty.",
+      "order": 6
+    },
+    "fail_on": {
+      "type": "string",
+      "default": "block",
+      "enum": ["block", "needs_human", "warn", "never"],
+      "description": "Mark the run failed when the verdict is at least",
+      "order": 7
+    }
+  },
+  "success_message": "Created {{.project_name}}. Next: cd {{.project_name}} && databricks bundle deploy. See {{.project_name}}/README.md."
+}

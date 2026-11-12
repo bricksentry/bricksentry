@@ -1,0 +1,14 @@
+# bricksentry: check what every pipeline run did to your tables.
+# Docs: https://bricksentry.org/docs/jobs
+bundle:
+  name: {{.project_name}}
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production

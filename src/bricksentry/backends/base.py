@@ -83,6 +83,18 @@ class Backend(ABC):
     def current_version(self, table: str) -> int | None:
         return None
 
+    def history(self, table: str, limit: int = 50) -> list[dict[str, Any]]:
+        """Table history rows (version, timestamp, operation, ...), newest first."""
+        raise NotImplementedError(f"the {self.name} backend has no table history")
+
+    def clone_version(self, source: str, target: str, version: int) -> None:
+        """Cheap copy of ``source`` as it was at ``version``."""
+        raise NotImplementedError(f"the {self.name} backend has no time travel")
+
+    def primary_key(self, table: str) -> list[str]:
+        """The table's PRIMARY KEY columns, or [] if none / unknown."""
+        return []
+
     @staticmethod
     def is_numeric(type_name: str) -> bool:
         t = type_name.lower()

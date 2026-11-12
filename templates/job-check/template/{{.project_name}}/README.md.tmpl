@@ -1,0 +1,68 @@
+# {{.project_name}}: bricksentry checks for your tables
+
+This bundle deploys one serverless job, **bricksentry check ({{.project_name}})**. When any of
+these tables changes, it runs and checks what changed:
+
+{{.tables}}
+
+For each table it compares the version before the change with the version after it (two
+shallow clones in `{{.scratch_schema}}`, dropped after the check; your tables are only read).
+It reports rows added, removed and changed, duplicate or NULL keys, schema changes and totals
+that moved, plus what depends on the table (Unity Catalog lineage). The `{{.policy}}` policy turns
+that into a verdict: pass, warn, needs_human or block. The run log shows the `RESTORE` statement
+that undoes the change.{{if .slack_secret}} Alerts go to Slack using the webhook in the secret `{{.slack_secret}}`.{{end}}
+The run is marked failed when the verdict is `{{.fail_on}}` or worse.
+
+## Deploy
+
+```bash
+databricks bundle deploy            # dev: the job is named [dev you] ... and its trigger is paused
+databricks bundle deploy -t prod    # prod: the trigger is live
+databricks bundle run bricksentry_check   # run once now (checks the last 60 minutes)
+```
+
+The job's identity needs `SELECT` on the tables, `USE` and `CREATE TABLE` on
+`{{.scratch_schema}}`, `CAN USE` on the warehouse, `SELECT` on `system.access.table_lineage` (for
+lineage){{if .slack_secret}}, and `READ` on the secret scope{{end}}. Table history must still be there
+(not removed by `VACUUM`).
+
+## Slack alerts
+
+```bash
+databricks secrets create-scope bricksentry
+databricks secrets put-secret bricksentry slack_webhook   # paste the webhook URL when asked
+```
+
+Then add `--slack-secret bricksentry/slack_webhook` to the task parameters in
+`resources/bricksentry_check.job.yml`. For Teams use `--teams-secret`.
+
+## Stop downstream tasks instead of only alerting
+
+This job runs after the change has landed. To stop the tasks that read a table when its
+change is bad, add the check as a task inside your pipeline job, right after the task that
+writes the table:
+
+```yaml
+        - task_key: bricksentry_check
+          depends_on: [{task_key: your_write_task}]
+          environment_key: bricksentry
+          spark_python_task:
+            python_file: ../src/bricksentry_check.py
+            parameters: [--tables, main.sales.orders, --warehouse-id, "{{.warehouse_id}}",
+                         --scratch-schema, "{{.scratch_schema}}",
+                         --since, "{{`{{job.start_time.iso_datetime}}`}}"]
+        - task_key: your_downstream_task
+          depends_on: [{task_key: bricksentry_check}]
+      environments:
+        - environment_key: bricksentry
+          spec: {environment_version: "2", dependencies: ["bricksentry[databricks]>=0.1.14"]}
+```
+
+`--since {{`{{job.start_time.iso_datetime}}`}}` checks everything this run wrote as one change.
+When the verdict is `block`, the check task fails and `your_downstream_task` does not run.
+
+## Options
+
+`python -m bricksentry.job --help` lists them: `--key TABLE=col1,col2` for tables without a
+primary key, `--config bricksentry.yml` for keys, lineage, owners and Slack mentions,
+`--notify-on`, `--sample-pct` for very large tables. Docs: https://bricksentry.org

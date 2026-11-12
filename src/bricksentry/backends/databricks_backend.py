@@ -142,6 +142,34 @@ class DatabricksBackend(Backend):
         v = rows[0].get("version")
         return int(v) if v is not None else None
 
+    def history(self, table: str, limit: int = 50) -> list[dict[str, Any]]:
+        return self.query(f"DESCRIBE HISTORY {self.qualified(table)} LIMIT {int(limit)}")
+
+    def clone_version(self, source: str, target: str, version: int) -> None:
+        self.execute(
+            f"CREATE OR REPLACE TABLE {self.qualified(target)} "
+            f"SHALLOW CLONE {self.qualified(source)} VERSION AS OF {int(version)}"
+        )
+
+    def primary_key(self, table: str) -> list[str]:
+        parts = table.split(".")
+        if len(parts) != 3:
+            return []
+        cat, sch, tbl = parts
+        lit = lambda x: "'" + x.replace("'", "''") + "'"  # noqa: E731
+        try:
+            rows = self.query(
+                f"SELECT k.column_name FROM {self.quote(cat)}.information_schema.table_constraints c "
+                f"JOIN {self.quote(cat)}.information_schema.key_column_usage k "
+                "ON k.constraint_catalog = c.constraint_catalog AND k.constraint_schema = c.constraint_schema "
+                "AND k.constraint_name = c.constraint_name "
+                f"WHERE c.constraint_type = 'PRIMARY KEY' AND c.table_schema = {lit(sch)} "
+                f"AND c.table_name = {lit(tbl)} ORDER BY k.ordinal_position"
+            )
+        except Exception:
+            return []
+        return [r["column_name"] for r in rows]
+
 
 def _auth_help(e: Exception, profile: str | None) -> str:
     """One clear message when the Databricks SDK can't find credentials.

@@ -70,7 +70,7 @@ def config_warnings(data: dict[str, Any]) -> list[str]:
     if not isinstance(data, dict):
         return ["bricksentry.yml should be a mapping of settings"]
     w = _unknown("bricksentry.yml", data, TOP_LEVEL_KEYS)
-    w += _unknown("notify", data.get("notify"), NOTIFY_KEYS)
+    w += _unknown("notify", _notify(data.get("notify")), NOTIFY_KEYS)
     w += _unknown("lineage", data.get("lineage"), LINEAGE_KEYS)
     for name, spec in (data.get("tables") or {}).items() if isinstance(data.get("tables"), dict) else []:
         w += _unknown(f"tables.{name}", spec, TABLE_KEYS)
@@ -85,6 +85,13 @@ def config_warnings(data: dict[str, Any]) -> list[str]:
             if v.startswith("https://"):
                 w.append(f"notify.{k}: the webhook URL is written in the file; it is a secret, use env:NAME instead")
     return w
+
+
+def _notify(n: Any) -> dict[str, Any]:
+    """YAML 1.1 reads an unquoted ``on:`` key as the boolean True; map it back to "on"."""
+    if not isinstance(n, dict):
+        return n or {}
+    return {("on" if k is True else k): v for k, v in n.items()}
 
 
 def _measures(v: Any) -> list[str] | str | None:
@@ -160,7 +167,7 @@ class Config:
             lineage=data.get("lineage") or {},
             tables=tables,
             policy=policy,
-            notify=data.get("notify") or {},
+            notify=_notify(data.get("notify")),
             root=root,
             warnings=config_warnings(data),
         )

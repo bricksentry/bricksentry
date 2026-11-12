@@ -36,6 +36,25 @@ Point the [check-my-table notebook](examples/databricks/bricksentry_check_my_tab
 
 If it shows you something, please [share what it found](https://github.com/bricksentry/bricksentry/issues/new?template=it_caught_this.yml) (no table names needed). Real results decide what gets built next.
 
+### Check every pipeline run automatically (Asset Bundle, 5 minutes)
+
+```bash
+databricks bundle init https://github.com/bricksentry/bricksentry --template-dir templates/job-check
+cd bricksentry_check && databricks bundle deploy -t prod
+```
+
+Answer a few prompts (tables to watch, SQL warehouse, scratch schema, policy, optional Slack webhook secret). You get a serverless job with a **table update trigger**: whenever a watched table changes, it checks the change, sends the alert and logs the `RESTORE` that undoes it. To stop downstream tasks when a change is bad, add the same check as a task inside your pipeline job, right after the write (the generated README shows the YAML): with `--since {{job.start_time.iso_datetime}}` it checks everything the run wrote, and a `block` verdict fails the task so the tasks after it don't run.
+
+From the command line, the same check is one command:
+
+```bash
+bricksentry check-last-change main.sales.orders                 # newest data change vs the version before
+bricksentry check-last-change main.sales.orders --version 42    # a specific version
+bricksentry check-last-change main.sales.orders --since 2026-11-11T09:00:00Z --fail-on needs_human
+```
+
+Keys come from `bricksentry.yml`, `--key`, or the table's `PRIMARY KEY` constraint. OPTIMIZE and VACUUM commits are skipped because they don't change data.
+
 ### Every feature on an HR pipeline
 
 > **HR walkthrough notebook:** Workspace → Import → URL →
@@ -145,6 +164,7 @@ bricksentry diff main.sales.orders main.sales_pr_42.orders
 bricksentry preview main.sales.orders --sql "MERGE INTO {{target}} t USING updates u ON t.order_id = u.order_id WHEN MATCHED THEN UPDATE SET *"
 bricksentry assess --from-git origin/main --pr 42 --format markdown --fail-on needs_human
 bricksentry rollback main.sales.orders
+bricksentry check-last-change main.sales.orders             # the change a pipeline already made
 ```
 
 Exit codes: `0` below `--fail-on`, `1` at or above it, `2` for configuration errors.
@@ -353,7 +373,7 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 - `CAN USE` on a SQL warehouse.
 - `SELECT` on the tables you assess and their candidates.
 - `SELECT` on `system.access.table_lineage` (and `system.access.column_lineage` for column-level impact), plus `system.information_schema` for owners, table tags and column tags. Without lineage access bricksentry still diffs, and adds a `lineage-unavailable` warning (blast radius unknown) instead of guessing.
-- `CREATE TABLE` on `sandbox_schema`, for `preview_write`.
+- `CREATE TABLE` on `sandbox_schema`, for `preview_write` and `check-last-change`. `check-last-change` also needs the table's Delta history (versions not yet removed by `VACUUM`).
 
 ## Known limits (v0.1.x)
 

@@ -193,6 +193,67 @@ def demo(report_path):
         raise click.ClickException(str(e)) from e
 
 
+@main.command("check-last-change")
+@click.argument("table")
+@click.option("--key", "-k", "keys", multiple=True,
+              help="Key column (repeatable). Defaults to config, then the table's PRIMARY KEY.")
+@click.option("--version", "version", type=int, default=None, help="Check this table version instead.")
+@click.option("--since", default=None,
+              help="Check every data change after this time as one change (ISO 8601 or epoch ms), "
+                   "e.g. the job's start time {{job.start_time.iso_datetime}}.")
+@click.option("--sample-pct", type=float, default=None, help="Diff a deterministic hash sample (0-100).")
+@click.option("--allow-no-change", is_flag=True,
+              help="Exit 0 when there is no data change to check (e.g. the run only ran OPTIMIZE).")
+@click.option("--format", "fmt", type=click.Choice(["text", "json", "markdown"]), default="text")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Also write the markdown report here.")
+@notify_opt
+@fail_opt
+@config_opt
+def check_last_change(table, keys, version, since, sample_pct, allow_no_change, fmt, output, notify, fail_on,
+                      config_path):
+    """Check the change a pipeline already made to TABLE, from its Delta history.
+
+    Compares the version before the change with the version after it (two shallow clones in
+    sandbox_schema, dropped afterwards), then runs lineage and policy. Prints the RESTORE that
+    undoes it. Exit 1 when the verdict is at least --fail-on, so a job task after your
+    pipeline stops the tasks downstream of it.
+    """
+    from bricksentry.history import NoChangeError
+    from bricksentry.report import to_markdown
+
+    if version is not None and since:
+        raise click.UsageError("pass --version or --since, not both")
+    s = _sentry(config_path)
+    try:
+        a, change = s.check_change(table, keys=list(keys) or None, version=version, since=since,
+                                   sample_pct=sample_pct)
+    except NoChangeError as e:
+        click.echo(str(e), err=True)
+        sys.exit(0 if allow_no_change else 2)
+    except (NotImplementedError, ValueError, RuntimeError) as e:
+        raise click.ClickException(str(e)) from e
+    md = to_markdown(a)
+    if output:
+        Path(output).write_text(md)
+    if notify:
+        for line in s.notify(a):
+            click.echo(f"notify {line}", err=True)
+    if fmt == "json":
+        click.echo(json.dumps({**a.to_dict(), "change": change.to_dict()}, indent=2, default=str))
+    elif fmt == "markdown":
+        click.echo(md)
+    else:
+        click.echo(f"{a.verdict.value.upper()} (risk {a.verdict.risk_tier})")
+        for t in a.tables:
+            click.echo(f"- {t.summary}")
+            for h in t.hits:
+                click.echo(f"    [{h.verdict.value}] {h.rule}: {h.reason}")
+            click.echo(f"Undo: {t.rollback}")
+        if a.notify:
+            click.echo(f"Notify: {', '.join(a.notify)}")
+    _exit_for(a.verdict, fail_on)
+
+
 @main.command()
 @click.argument("table")
 @config_opt

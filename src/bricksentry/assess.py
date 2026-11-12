@@ -219,6 +219,24 @@ class Sentry:
         return out
 
     # --- alerts ---------------------------------------------------------------
+    def check_change(
+        self,
+        table: str,
+        keys: list[str] | None = None,
+        version: int | None = None,
+        since: Any = None,
+        sample_pct: float | None = None,
+    ):
+        """Assess a change that already landed in ``table`` (from its Delta history).
+
+        Returns ``(assessment, change)``. By default the newest data change is checked; pass
+        ``version`` for a specific one, or ``since`` (a timestamp) to check everything after it
+        as one change. The table is only read; see :mod:`bricksentry.history`.
+        """
+        from bricksentry.history import check_change
+
+        return check_change(self, table, keys=keys, version=version, since=since, sample_pct=sample_pct)
+
     def notify(self, assessment: Assessment, pr: str | None = None, force: bool = False) -> list[str]:
         """Send a Slack / Teams alert for ``assessment`` if configured. Never raises."""
         from bricksentry.notify import NotifySettings, send

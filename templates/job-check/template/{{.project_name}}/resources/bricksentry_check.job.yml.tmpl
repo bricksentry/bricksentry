@@ -1,0 +1,51 @@
+# Runs after any watched table changes (Delta commit), checks what changed, alerts, and
+# fails the run when the verdict is at least --fail-on. OPTIMIZE / VACUUM commits also
+# start a run; they have no data change, so the run just finishes ("nothing to check").
+resources:
+  jobs:
+    bricksentry_check:
+      name: bricksentry check ({{.project_name}})
+      max_concurrent_runs: 1
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names: [{{.tables}}]
+          condition: ANY_UPDATED
+          # Wait until the pipeline has stopped writing, so one run covers all its commits.
+          wait_after_last_change_seconds: 120
+      tasks:
+        - task_key: bricksentry_check
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/bricksentry_check.py
+            parameters:
+              - --tables
+              - "{{`{{job.trigger.table_update.updated_tables}}`}}"
+              - --default-tables
+              - "{{.tables}}"
+              # Every data change in the last 60 minutes is checked as one change.
+              - --since-minutes
+              - "60"
+              - --warehouse-id
+              - "{{.warehouse_id}}"
+              - --scratch-schema
+              - "{{.scratch_schema}}"
+              - --policy
+              - "{{.policy}}"
+              - --fail-on
+              - "{{.fail_on}}"
+{{- if .slack_secret}}
+              - --slack-secret
+              - "{{.slack_secret}}"
+{{- end}}
+              - --run-url
+              - "{{`{{workspace.url}}/jobs/{{job.id}}/runs/{{job.run_id}}`}}"
+              # Key columns default to each table's PRIMARY KEY. Otherwise add, per table:
+              # - --key
+              # - "main.sales.orders=order_id"
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - bricksentry[databricks]>=0.1.14

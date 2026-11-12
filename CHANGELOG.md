@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.14 (2026-11-11)
+
+Zero-friction adoption: check every pipeline run without changing the pipeline.
+
+- **`bricksentry check-last-change <table>`** checks a change that already landed, from the table's Delta history. It finds the newest data change (WRITE, MERGE, UPDATE, DELETE, COPY INTO, ...; OPTIMIZE and VACUUM are skipped), compares the version before with the version after (two shallow clones in `sandbox_schema`, dropped afterwards), runs lineage and policy, sends the alert, and prints the `RESTORE` that undoes it. `--version N` checks a specific version; `--since TIME` checks everything after that time as one change, e.g. all a job run wrote. Keys come from config, `--key`, or the table's `PRIMARY KEY`. Python: `Sentry.check_change(table)`.
+- **Asset Bundle template** in `templates/job-check`: `databricks bundle init https://github.com/bricksentry/bricksentry --template-dir templates/job-check` creates a serverless job with a table update trigger that checks every change to up to 10 tables, alerts on Slack (webhook read from a secret scope) and fails the run at the verdict you choose. Its README shows how to add the check as a task inside an existing job so a `block` stops the downstream tasks.
+- **`python -m bricksentry.job`**: the job-task entry point used by the template. Takes the table list the trigger provides, a Slack or Teams webhook from a secret scope, and a link back to the run for the alert.
+- Fix: in `bricksentry.yml`, `notify: {on: block}` was ignored, because YAML reads an unquoted `on` key as `true`. It is now read correctly (quoting it was the workaround).
+
 ## 0.1.13 (2026-11-11)
 
 From the first live test of column lineage on Databricks (the 0.1.12 column features were verified against real `system.access.column_lineage` and column tags):
