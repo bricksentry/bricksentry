@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.18 (2026-11-12)
+
+See a block in your own workspace within minutes of `bundle init`.
+
+- The job template asks whether to add a **demo job** (default yes). `databricks bundle run bricksentry_demo` creates a 20,000-row demo table in your scratch schema, runs a MERGE whose ON condition compares region case-sensitively (so 25 orders are inserted again as duplicates), then checks that change. The run ends red with BLOCK, the rules that fired and the `RESTORE` that undoes it, plus the Slack alert if you set one up. It writes only to `bricksentry_demo_*` tables.
+- `python -m bricksentry.job_demo`: the task that makes the demo change.
+- Slack is now presented as optional in the template prompt, and the success message lists the next commands.
+- The template README no longer says the trigger is paused in the dev target: the job sets `pause_status: UNPAUSED` on its trigger, which development mode respects.
+
 ## 0.1.17 (2026-11-12)
 
 - `bricksentry demo` now ends with a pipeline commit: a nightly MERGE with a wrong match condition lands, `check-last-change` finds it in the table history (skipping the OPTIMIZE after it), blocks it for 25 duplicate keys, prints the `RESTORE` and applies it. It replaces the old step 2, which only described a rollback because DuckDB has no table history; the demo now keeps versions itself. It still runs offline in about a second and ends with the one-command Databricks setup.

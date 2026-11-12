@@ -57,3 +57,56 @@ resources:
               # Pinned: serverless resolves the dependencies once and caches them, so a range
               # would not pick up new releases. To upgrade, change the version and redeploy.
               - bricksentry[databricks]=={{.bricksentry_version}}
+{{- if eq .demo "yes"}}
+
+    # Demo: makes a known-bad change to a demo table in {{.scratch_schema}}, then checks it.
+    # `databricks bundle run bricksentry_demo` ends red with BLOCK (duplicate keys): that is
+    # the expected result. Delete this job once you have seen it.
+    bricksentry_demo:
+      name: bricksentry demo ({{.project_name}})
+      tasks:
+        - task_key: make_bad_change
+          environment_key: default
+          max_retries: 0
+          disable_auto_optimization: true
+          spark_python_task:
+            python_file: ../src/bricksentry_demo.py
+            parameters:
+              - --table
+              - "{{.scratch_schema}}.bricksentry_demo_orders"
+              - --warehouse-id
+              - "{{.warehouse_id}}"
+        - task_key: bricksentry_check
+          depends_on:
+            - task_key: make_bad_change
+          environment_key: default
+          max_retries: 0
+          disable_auto_optimization: true
+          spark_python_task:
+            python_file: ../src/bricksentry_check.py
+            parameters:
+              - --tables
+              - "{{.scratch_schema}}.bricksentry_demo_orders"
+              - --key
+              - order_id
+              - --warehouse-id
+              - "{{.warehouse_id}}"
+              - --scratch-schema
+              - "{{.scratch_schema}}"
+              - --policy
+              - "{{.policy}}"
+              - --fail-on
+              - block
+{{- if .slack_secret}}
+              - --slack-secret
+              - "{{.slack_secret}}"
+{{- end}}
+              - --run-url
+              - "{{`{{workspace.url}}/jobs/{{job.id}}/runs/{{job.run_id}}`}}"
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - bricksentry[databricks]=={{.bricksentry_version}}
+{{- end}}

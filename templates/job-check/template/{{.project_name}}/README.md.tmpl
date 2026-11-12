@@ -16,10 +16,28 @@ The run is marked failed when the verdict is `{{.fail_on}}` or worse.
 ## Deploy
 
 ```bash
-databricks bundle deploy            # dev: the job is named [dev you] ... and its trigger is paused
-databricks bundle deploy -t prod    # prod: the trigger is live
+databricks bundle deploy                  # dev target: jobs are named "[dev you] ..."
+databricks bundle deploy -t prod          # prod target
 databricks bundle run bricksentry_check   # run once now (checks the last 60 minutes)
 ```
+
+The table update trigger is set to run in both targets. Each change waits 2 minutes
+(`wait_after_last_change_seconds`) so a pipeline's several commits are checked together.
+{{if eq .demo "yes"}}
+## See a block first (2 minutes)
+
+```bash
+databricks bundle run bricksentry_demo
+```
+
+It creates `{{.scratch_schema}}.bricksentry_demo_orders` (20,000 orders), runs a MERGE whose
+ON condition compares region case-sensitively, so 25 orders are inserted again as duplicates,
+then checks that change. The run ends **red with BLOCK**: that's the expected result. Open
+the `bricksentry_check` task's output to see the verdict, the rules that fired, and the
+`RESTORE` that undoes the change.{{if .slack_secret}} The Slack alert links back to the run.{{end}}
+When you're done, delete the demo table and the `bricksentry_demo` job from
+`resources/bricksentry_check.job.yml`.
+{{end}}
 
 The job's identity needs `SELECT` on the tables, `USE` and `CREATE TABLE` on
 `{{.scratch_schema}}`, `CAN USE` on the warehouse, `SELECT` on `system.access.table_lineage` (for

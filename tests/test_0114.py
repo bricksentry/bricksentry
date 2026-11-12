@@ -303,18 +303,38 @@ def test_bundle_template_files():
 
 # --- render the bundle template (a small subset of Go templates is used on purpose) ---
 def _render(text: str, values: dict) -> str:
-    def cond(m):
-        return m.group(2) if values.get(m.group(1)) else ""
+    """Render the subset of Go templates the bundle uses: {{.x}}, {{`raw`}}, nested
+    {{if .x}} / {{if eq .x "y"}} ... {{end}}, with optional {{- trimming."""
+    text = re.sub(r"\{\{`(.*?)`\}\}", lambda m: m.group(1).replace("{{", "\x00").replace("}}", "\x01"), text)
+    tok = re.compile(r"(\s*)\{\{(-?) ?(if (?:eq )?\.\w+(?: \"[^\"]*\")?|end)\}\}")
 
-    text = re.sub(r"\{\{-? ?if \.(\w+)\}\}(.*?)\{\{-? ?end\}\}", cond, text, flags=re.S)
-    text = re.sub(r"\{\{`(.*?)`\}\}", lambda m: m.group(1), text)
+    def cond(expr: str) -> bool:
+        m = re.fullmatch(r"if (eq )?\.(\w+)(?: \"([^\"]*)\")?", expr)
+        assert m, expr
+        v = values[m.group(2)]
+        return v == m.group(3) if m.group(1) else bool(v)
+
+    out, stack, pos = [], [True], 0
+    for m in tok.finditer(text):
+        if all(stack):
+            out.append(text[pos:m.start()] + ("" if m.group(2) else m.group(1)))
+        expr = m.group(3)
+        if expr == "end":
+            stack.pop()
+        else:
+            stack.append(cond(expr))
+        pos = m.end()
+    assert stack == [True], "unbalanced if/end"
+    out.append(text[pos:])
+    text = "".join(out)
     text = re.sub(r"\{\{\.(\w+)\}\}", lambda m: str(values[m.group(1)]), text)
-    assert "{{." not in text and "{{-" not in text
-    return text
+    assert "{{" not in text, text[text.index("{{") - 80:text.index("{{") + 80]
+    return text.replace("\x00", "{{").replace("\x01", "}}")
 
 
-@pytest.mark.parametrize("slack,keys", [("bricksentry/slack_webhook", "main.sales.orders=order_id"), ("", "")])
-def test_bundle_template_renders(slack, keys):
+@pytest.mark.parametrize("slack,keys,demo", [("bricksentry/slack_webhook", "main.sales.orders=order_id", "yes"),
+                                             ("", "", "no"), ("", "", "yes")])
+def test_bundle_template_renders(slack, keys, demo):
     from pathlib import Path
 
     import yaml
@@ -324,7 +344,7 @@ def test_bundle_template_renders(slack, keys):
     values = {k: p.get("default", "") for k, p in schema["properties"].items()}
     assert values["bricksentry_version"] == __import__("bricksentry").__version__
     values.update(tables="main.sales.orders, main.sales.customers", warehouse_id="abc123", slack_secret=slack,
-                  keys=keys)
+                  keys=keys, demo=demo)
     for k, p in schema["properties"].items():
         if "pattern" in p:
             assert re.fullmatch(p["pattern"], values[k]), k
@@ -347,7 +367,23 @@ def test_bundle_template_renders(slack, keys):
     # the job task's argv parses, and an unresolved trigger value falls back to --default-tables
     args = job.build_parser().parse_args(params)
     assert args.fail_on == "block" and args.since_minutes == 60
+    jobs = job_yml["resources"]["jobs"]
+    assert ("bricksentry_demo" in jobs) == (demo == "yes")
+    if demo == "yes":
+        dj = jobs["bricksentry_demo"]
+        make, check = dj["tasks"]
+        assert make["spark_python_task"]["python_file"] == "../src/bricksentry_demo.py"
+        assert check["depends_on"] == [{"task_key": "make_bad_change"}]
+        dargs = job.build_parser().parse_args(check["spark_python_task"]["parameters"])
+        assert dargs.tables == "main.bricksentry_scratch.bricksentry_demo_orders" and dargs.key == ["order_id"]
+        assert dargs.since is None and dargs.since_minutes is None and dargs.fail_on == "block"
+        assert (dargs.slack_secret is not None) == bool(slack)
+        assert all(t["max_retries"] == 0 and t["disable_auto_optimization"] for t in dj["tasks"])
+        assert dj["environments"] == j["environments"]
+    msg = _render(schema["success_message"], values)
+    assert ("bundle run bricksentry_demo" in msg) == (demo == "yes")
     readme = _render((proj / "README.md.tmpl").read_text(), values)
+    assert ("See a block first" in readme) == (demo == "yes")
     assert "{{job.start_time.iso_datetime}}" in readme
     assert (proj / "src" / "bricksentry_check.py").exists()
 
@@ -388,3 +424,54 @@ def test_concurrent_checks_use_different_clones():
     sentry(db).check_change("sales.orders")
     sentry(db).check_change("sales.orders")
     assert len(set(db.dropped)) == 4
+
+
+# --- demo job: the known-bad change ---------------------------------------------------
+class RecordingBackend:
+    def __init__(self):
+        self.sql: list[str] = []
+        self.schemas: list[str] = []
+
+    def qualified(self, t):
+        return ".".join(f"`{p}`" for p in t.split("."))
+
+    def ensure_schema(self, s):
+        self.schemas.append(s)
+
+    def execute(self, q):
+        self.sql.append(q)
+
+
+def test_job_demo_sql_and_guard():
+    from bricksentry import job_demo
+
+    b, lines = RecordingBackend(), []
+    assert job_demo.run(["--table", "main.scratch.bricksentry_demo_orders"], backend=b, out=lines.append) == 0
+    assert b.schemas == ["main.scratch"]
+    seed, merge = b.sql
+    assert seed.startswith("CREATE OR REPLACE TABLE `main`.`scratch`.`bricksentry_demo_orders` AS")
+    assert "MERGE INTO `main`.`scratch`.`bricksentry_demo_orders` AS t" in merge
+    assert "t.region = s.region" in merge and "lower(region)" in merge
+    assert "Expect BLOCK" in lines[-1]
+    for bad in ("main.sales.orders", "orders", "main.scratch.x; DROP TABLE y"):
+        with pytest.raises(SystemExit):
+            job_demo.run(["--table", bad], backend=RecordingBackend())
+
+
+def test_job_demo_change_is_blocked_end_to_end():
+    """The demo's bad MERGE, replayed on DuckDB history, is a block with the right undo."""
+    db = FakeDelta()
+    db.execute("CREATE TABLE sales.demo_v1 AS SELECT * FROM sales.orders_v1")
+    # the MERGE's effect: 25 orders inserted again (ON never matches)
+    db.execute("CREATE TABLE sales.demo_v2 AS SELECT * FROM sales.demo_v1 "
+               "UNION ALL SELECT order_id, round(amount * 1.05, 2) FROM sales.demo_v1 WHERE order_id % 80 = 0")
+    db._history = [{"version": 2, "operation": "MERGE", "timestamp": "2026-11-12 10:00:00"},
+                   {"version": 1, "operation": "CREATE OR REPLACE TABLE AS SELECT", "timestamp": "2026-11-12 09:59:00"},
+                   {"version": 0, "operation": "CREATE TABLE AS SELECT", "timestamp": "2026-11-01 00:00:00"}]
+    db.execute("CREATE TABLE sales.demo AS SELECT * FROM sales.demo_v2")
+    lines: list[str] = []
+    code = job.run(["--tables", "sales.demo", "--key", "order_id", "--scratch-schema", "scratch"],
+                   backend=db, out=lines.append)
+    text = "\n".join(lines)
+    assert code == 1 and "BLOCK" in text and "duplicate-keys: 25" in text
+    assert 'TO VERSION AS OF 1' in text

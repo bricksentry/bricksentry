@@ -30,10 +30,11 @@ uvx --from "bricksentry[duckdb]" bricksentry demo
 
 ```bash
 databricks bundle init https://github.com/bricksentry/bricksentry --template-dir templates/job-check
-cd bricksentry_check && databricks bundle deploy -t prod
+cd bricksentry_check && databricks bundle deploy
+databricks bundle run bricksentry_demo     # optional: see a block on a demo table in about 2 minutes
 ```
 
-One command and a few prompts give you a serverless job that runs after every commit to the tables you pick: the same check as the demo's last step, on your data, with a Slack alert and the `RESTORE` that undoes a bad change. [Details below](#check-every-pipeline-run-automatically-asset-bundle).
+One command and a few prompts give you a serverless job that runs after every commit to the tables you pick: the same check as the demo's last step, on your data, with the `RESTORE` that undoes a bad change and an optional Slack alert. The optional demo job writes a known-bad MERGE to a demo table in your scratch schema and checks it, so your first run ends red with a block. [Details below](#check-every-pipeline-run-automatically-asset-bundle).
 
 ### 3. Stop bad changes before anything reads them
 
@@ -57,7 +58,7 @@ databricks bundle init https://github.com/bricksentry/bricksentry --template-dir
 cd bricksentry_check && databricks bundle deploy -t prod
 ```
 
-Answer a few prompts (tables to watch, SQL warehouse, scratch schema, policy, optional Slack webhook secret). You get a serverless job with a **table update trigger**: whenever a watched table changes, it checks the change, sends the alert and logs the `RESTORE` that undoes it. To stop downstream tasks when a change is bad, add the same check as a task inside your pipeline job, right after the write (the generated README shows the YAML): with `--since {{job.start_time.iso_datetime}}` it checks everything the run wrote, and a `block` verdict fails the task so the tasks after it don't run.
+Answer a few prompts (tables to watch, key columns if they have no primary key, SQL warehouse, scratch schema, whether to add the demo job, policy, optional Slack webhook secret). You get a serverless job with a **table update trigger**: whenever a watched table changes, it checks the change, sends the alert and logs the `RESTORE` that undoes it. To stop downstream tasks when a change is bad, add the same check as a task inside your pipeline job, right after the write (the generated README shows the YAML): with `--since {{job.start_time.iso_datetime}}` it checks everything the run wrote, and a `block` verdict fails the task so the tasks after it don't run.
 
 From the command line, the same check is one command:
 

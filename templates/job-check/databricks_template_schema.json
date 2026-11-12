@@ -39,6 +39,16 @@
       "pattern_match_failure_message": "Use catalog.schema.",
       "order": 5
     },
+    "demo": {
+      "type": "string",
+      "default": "yes",
+      "enum": [
+        "yes",
+        "no"
+      ],
+      "description": "Add a demo job that makes a known-bad change to a demo table in the scratch schema, so your first run shows a block (recommended)",
+      "order": 6
+    },
     "policy": {
       "type": "string",
       "default": "default",
@@ -51,15 +61,15 @@
         "agent-safe"
       ],
       "description": "Policy for the verdict",
-      "order": 6
+      "order": 7
     },
     "slack_secret": {
       "type": "string",
       "default": "",
-      "description": "Slack webhook as a secret, scope/key (e.g. bricksentry/slack_webhook). Leave empty for no alerts",
+      "description": "Optional: Slack webhook secret as scope/key (e.g. bricksentry/slack_webhook). Leave empty now and add it later",
       "pattern": "^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?$",
       "pattern_match_failure_message": "Use scope/key, or leave empty.",
-      "order": 7
+      "order": 8
     },
     "fail_on": {
       "type": "string",
@@ -71,16 +81,16 @@
         "never"
       ],
       "description": "Mark the run failed when the verdict is at least",
-      "order": 8
+      "order": 9
     },
     "bricksentry_version": {
       "type": "string",
-      "default": "0.1.17",
+      "default": "0.1.18",
       "description": "bricksentry version to install in the job (pinned; change it and redeploy to upgrade)",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "pattern_match_failure_message": "Use a version like 0.1.17.",
-      "order": 9
+      "pattern_match_failure_message": "Use a version like 0.1.18.",
+      "order": 10
     }
   },
-  "success_message": "Created {{.project_name}}. Next: cd {{.project_name}} && databricks bundle deploy. See {{.project_name}}/README.md."
+  "success_message": "\nCreated {{.project_name}}. Next:\n  cd {{.project_name}}\n  databricks bundle deploy\n{{if eq .demo \"yes\"}}  databricks bundle run bricksentry_demo   # about 2 minutes; ends red with BLOCK, which is the point\n{{end}}Then any change to the watched tables is checked automatically. See {{.project_name}}/README.md."
 }
