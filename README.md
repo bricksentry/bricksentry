@@ -36,6 +36,13 @@ Point the [check-my-table notebook](examples/databricks/bricksentry_check_my_tab
 
 If it shows you something, please [share what it found](https://github.com/bricksentry/bricksentry/issues/new?template=it_caught_this.yml) (no table names needed). Real results decide what gets built next.
 
+### Every feature on an HR pipeline
+
+> **HR walkthrough notebook:** Workspace → Import → URL →
+> `https://raw.githubusercontent.com/bricksentry/bricksentry/main/examples/databricks/bricksentry_hr_walkthrough.py`
+
+The [HR walkthrough](examples/databricks/bricksentry_hr_walkthrough.py) builds a 200,000-row employee table (tagged pii) feeding a certified pay summary, then shows everything bricksentry does on it: table and column blast radius, two pull requests (one risky, one broken), every rule, an agent's write previewed on a clone with dangerous SQL refused, the PR report, column-level policies, sampling that can't hide a duplicate, lineage from config, alerts and the MCP tools. It removes everything it created at the end. First run on a live workspace by Genie, an AI agent in Databricks, in November 2026.
+
 ### Guided tour on demo data
 
 > **Databricks quickstart notebook:** in your workspace, go to **Workspace → Import → URL** and paste
