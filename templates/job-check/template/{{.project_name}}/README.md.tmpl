@@ -49,13 +49,13 @@ writes the table:
           spark_python_task:
             python_file: ../src/bricksentry_check.py
             parameters: [--tables, main.sales.orders, --warehouse-id, "{{.warehouse_id}}",
-                         --scratch-schema, "{{.scratch_schema}}",
+                         --scratch-schema, "{{.scratch_schema}}",{{if .keys}} --keys, "{{.keys}}",{{end}}
                          --since, "{{`{{job.start_time.iso_datetime}}`}}"]
         - task_key: your_downstream_task
           depends_on: [{task_key: bricksentry_check}]
       environments:
         - environment_key: bricksentry
-          spec: {environment_version: "2", dependencies: ["bricksentry[databricks]>=0.1.14"]}
+          spec: {environment_version: "2", dependencies: ["bricksentry[databricks]>=0.1.15"]}
 ```
 
 `--since {{`{{job.start_time.iso_datetime}}`}}` checks everything this run wrote as one change.
@@ -63,6 +63,6 @@ When the verdict is `block`, the check task fails and `your_downstream_task` doe
 
 ## Options
 
-`python -m bricksentry.job --help` lists them: `--key TABLE=col1,col2` for tables without a
-primary key, `--config bricksentry.yml` for keys, lineage, owners and Slack mentions,
+`python -m bricksentry.job --help` lists them: `--keys "TABLE=col1,col2; TABLE2=col"` for tables
+without a primary key{{if .keys}} (this bundle sets `{{.keys}}`){{end}}, `--config bricksentry.yml` for keys, lineage, owners and Slack mentions,
 `--notify-on`, `--sample-pct` for very large tables. Docs: https://bricksentry.org

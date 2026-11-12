@@ -16,6 +16,7 @@ resources:
       tasks:
         - task_key: bricksentry_check
           environment_key: default
+          max_retries: 0  # a block verdict is an answer, not a flaky failure
           spark_python_task:
             python_file: ../src/bricksentry_check.py
             parameters:
@@ -34,18 +35,20 @@ resources:
               - "{{.policy}}"
               - --fail-on
               - "{{.fail_on}}"
+{{- if .keys}}
+              - --keys
+              - "{{.keys}}"
+{{- end}}
 {{- if .slack_secret}}
               - --slack-secret
               - "{{.slack_secret}}"
 {{- end}}
               - --run-url
               - "{{`{{workspace.url}}/jobs/{{job.id}}/runs/{{job.run_id}}`}}"
-              # Key columns default to each table's PRIMARY KEY. Otherwise add, per table:
-              # - --key
-              # - "main.sales.orders=order_id"
+              # Tables without a PRIMARY KEY need key columns: --keys "main.sales.orders=order_id; ..."
       environments:
         - environment_key: default
           spec:
             environment_version: "2"
             dependencies:
-              - bricksentry[databricks]>=0.1.14
+              - bricksentry[databricks]>=0.1.15

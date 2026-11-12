@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bricksentry"
-version = "0.1.14"
+version = "0.1.15"
 description = "Change-safety for Databricks pipelines and the AI agents that edit them: data diffs, Unity Catalog blast radius, policy verdicts and rollback plans."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -51,7 +51,7 @@ Issues = "https://github.com/bricksentry/bricksentry/issues"
 Changelog = "https://github.com/bricksentry/bricksentry/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "examples", "scripts", "README.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "action.yml"]
+include = ["/src", "/tests", "/examples", "/scripts", "/templates", "/deploy", "/README.md", "/LICENSE", "/CHANGELOG.md", "/CONTRIBUTING.md", "/SECURITY.md", "/action.yml", "/server.json"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bricksentry"]

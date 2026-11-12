@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.15 (2026-11-11)
+
+From the first live test of the 0.1.14 job template on Databricks serverless (deployed with `databricks bundle deploy`, started by the table update trigger and by hand):
+
+- Fix: every run of the job task was marked failed, even "pass" and "nothing to check", because Databricks treats any `SystemExit` from a Python script task as an error, including exit code 0. `python -m bricksentry.job` now only exits when the task should fail (verdict at or above `--fail-on`, or an error).
+- The bundle template now asks for key columns (`keys`, e.g. `main.hr.employees=employee_id`), for tables without a `PRIMARY KEY`. Before, those runs failed with "No key columns" until `--key` was added by hand. The job task takes several at once with `--keys "t1=a,b; t2=c"`.
+- The template's task sets `max_retries: 0`, so a `block` verdict fails the run once instead of being retried.
+- Fix: the source distribution on PyPI had only some of the bundle template's files (and the Databricks App kit was missing). It now includes `templates/` and `deploy/` in full.
+
 ## 0.1.14 (2026-11-11)
 
 Zero-friction adoption: check every pipeline run without changing the pipeline.

@@ -311,8 +311,8 @@ def _render(text: str, values: dict) -> str:
     return text
 
 
-@pytest.mark.parametrize("slack", ["bricksentry/slack_webhook", ""])
-def test_bundle_template_renders(slack):
+@pytest.mark.parametrize("slack,keys", [("bricksentry/slack_webhook", "main.sales.orders=order_id"), ("", "")])
+def test_bundle_template_renders(slack, keys):
     from pathlib import Path
 
     import yaml
@@ -320,7 +320,8 @@ def test_bundle_template_renders(slack):
     root = Path(__file__).resolve().parents[1] / "templates" / "job-check"
     schema = json.loads((root / "databricks_template_schema.json").read_text())
     values = {k: p.get("default", "") for k, p in schema["properties"].items()}
-    values.update(tables="main.sales.orders, main.sales.customers", warehouse_id="abc123", slack_secret=slack)
+    values.update(tables="main.sales.orders, main.sales.customers", warehouse_id="abc123", slack_secret=slack,
+                  keys=keys)
     for k, p in schema["properties"].items():
         if "pattern" in p:
             assert re.fullmatch(p["pattern"], values[k]), k
@@ -335,6 +336,8 @@ def test_bundle_template_renders(slack):
     assert params[:2] == ["--tables", "{{job.trigger.table_update.updated_tables}}"]
     assert "{{workspace.url}}/jobs/{{job.id}}/runs/{{job.run_id}}" in params
     assert ("--slack-secret" in params) == bool(slack)
+    assert ("--keys" in params) == bool(keys)
+    assert task["max_retries"] == 0
     assert task["environment_key"] == j["environments"][0]["environment_key"]
     assert j["environments"][0]["spec"]["dependencies"][0].startswith("bricksentry[databricks]")
     # the job task's argv parses, and an unresolved trigger value falls back to --default-tables
@@ -355,3 +358,20 @@ def test_job_unresolved_trigger_value_uses_default_tables():
 def test_yaml_on_key_is_read():
     cfg = Config.from_dict(__import__("yaml").safe_load("notify:\n  on: block\n"))
     assert cfg.notify == {"on": "block"} and not cfg.warnings
+
+
+def test_job_main_returns_on_success_and_exits_on_failure(monkeypatch):
+    # Databricks marks a spark_python_task failed on any SystemExit, even 0 (found live in 0.1.14).
+    monkeypatch.setattr(job, "run", lambda argv: 0)
+    assert job.main([]) is None
+    monkeypatch.setattr(job, "run", lambda argv: 1)
+    with pytest.raises(SystemExit) as e:
+        job.main([])
+    assert e.value.code == 1
+
+
+def test_job_keys_option():
+    lines: list[str] = []
+    code = job.run(["--tables", "sales.orders", "--keys", "sales.orders=order_id; sales.other=x",
+                    "--scratch-schema", "scratch", "--fail-on", "never"], backend=FakeDelta(pk=()), out=lines.append)
+    assert code == 0 and "sales.orders: BLOCK" in lines[0]

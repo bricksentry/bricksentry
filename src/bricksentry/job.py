@@ -78,6 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--warehouse-id", default=os.environ.get("DATABRICKS_WAREHOUSE_ID"))
     p.add_argument("--config", default=None, help="Optional bricksentry.yml (keys, policy, lineage, notify)")
     p.add_argument("--key", action="append", default=[], help="order_id or TABLE=col1,col2 (repeatable)")
+    p.add_argument("--keys", default=None,
+                   help="Several at once, separated by ';': 'main.s.orders=order_id; main.s.items=order_id,line'")
     p.add_argument("--policy", default=None, help="Built-in policy name (default, strict, finance, pii, ...)")
     p.add_argument("--scratch-schema", default=None, help="catalog.schema for the temporary shallow clones")
     p.add_argument("--default-tables", default=None,
@@ -143,7 +145,7 @@ def run(argv: list[str] | None = None, backend: Any = None, out=print) -> int:
     if not tables:
         out("bricksentry: no tables to check.")
         return 0
-    keys = parse_keys(args.key)
+    keys = parse_keys(args.key + [k for k in (args.keys or "").split(";") if k.strip()])
     s = make_sentry(args, backend=backend)
     worst: Verdict | None = None
     errors = 0
@@ -176,8 +178,12 @@ def run(argv: list[str] | None = None, backend: Any = None, out=print) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> None:  # pragma: no cover - thin wrapper
-    sys.exit(run(argv))
+def main(argv: list[str] | None = None) -> None:
+    """Exit only on failure. Databricks reports any SystemExit from a spark_python_task,
+    even ``SystemExit(0)``, as a task error, so a clean run must simply return."""
+    code = run(argv)
+    if code:
+        sys.exit(code)
 
 
 if __name__ == "__main__":  # pragma: no cover
