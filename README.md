@@ -8,22 +8,36 @@
 
 Change-safety for Databricks pipelines and the AI agents that edit them: know what a change does to your data before it ships.
 
-**[Try it in 30 seconds](#try-it-in-30-seconds-no-databricks-needed)** · **[Run the Databricks notebook](#run-it-in-your-databricks-workspace)** · **[Docs: bricksentry.org](https://bricksentry.org)** · **[LinkedIn](https://www.linkedin.com/company/bricksentry-org/)**
+**[Try it in 30 seconds](#1-try-it-in-30-seconds-on-your-laptop)** · **[Check every change on Databricks](#2-check-every-change-to-your-tables-on-databricks)** · **[Docs: bricksentry.org](https://bricksentry.org)** · **[LinkedIn](https://www.linkedin.com/company/bricksentry-org/)**
 
 Built by Brahmareddy, Databricks Champion. Open source under Apache-2.0.
 
 *Why the name?* Bricks plus entry. Your tables and pipelines are the bricks of the lakehouse, and every change to them is an entry. bricksentry checks each entry, reports what it does, and stands guard before it lands.
 
-## Try it in 30 seconds (no Databricks needed)
+## Three steps, each on more real data
+
+### 1. Try it in 30 seconds, on your laptop
 
 ```bash
-pip install "bricksentry[duckdb]"
-bricksentry demo
+uvx --from "bricksentry[duckdb]" bricksentry demo
 ```
 
-An AI agent changes a 20,000-row revenue table. bricksentry previews its DELETE on a clone (production untouched), **blocks** its pull request for a join that duplicates 40 orders, and routes the fixed version to the owners of a certified table downstream. Everything runs locally on DuckDB.
+(Or `pip install "bricksentry[duckdb]"` and then `bricksentry demo`.) No Databricks account and nothing leaves your machine: it runs on a 20,000-row revenue table in local DuckDB. An AI agent previews a DELETE on a clone (production untouched), gets its pull request **blocked** for a join that duplicates 40 orders, fixes it, and is routed to the owners of a certified table downstream. Then a nightly pipeline commits a bad MERGE anyway: bricksentry finds it in the table history, skips the OPTIMIZE after it, **blocks** it for 25 duplicate keys, prints the `RESTORE` and applies it.
 
-![bricksentry demo: an agent's change is previewed, blocked for duplicate keys, then routed to the table owners](https://raw.githubusercontent.com/bricksentry/bricksentry/main/docs/images/demo.png)
+![bricksentry demo: an agent's change is previewed, blocked, fixed and routed to the owners; then a bad pipeline commit is caught from table history and undone](https://raw.githubusercontent.com/bricksentry/bricksentry/main/docs/images/demo.png)
+
+### 2. Check every change to your tables, on Databricks
+
+```bash
+databricks bundle init https://github.com/bricksentry/bricksentry --template-dir templates/job-check
+cd bricksentry_check && databricks bundle deploy -t prod
+```
+
+One command and a few prompts give you a serverless job that runs after every commit to the tables you pick: the same check as the demo's last step, on your data, with a Slack alert and the `RESTORE` that undoes a bad change. [Details below](#check-every-pipeline-run-automatically-asset-bundle).
+
+### 3. Stop bad changes before anything reads them
+
+Put the check inside your pipeline job, right after the task that writes the table: a `block` fails that task and the tasks downstream don't run. Or run it on pull requests with the [GitHub Action](#for-data-engineers-cli-and-ci), and give AI agents the same checks through the [MCP server](#for-ai-agents-the-mcp-server).
 
 ## Run it in your Databricks workspace
 
@@ -36,7 +50,7 @@ Point the [check-my-table notebook](examples/databricks/bricksentry_check_my_tab
 
 If it shows you something, please [share what it found](https://github.com/bricksentry/bricksentry/issues/new?template=it_caught_this.yml) (no table names needed). Real results decide what gets built next.
 
-### Check every pipeline run automatically (Asset Bundle, 5 minutes)
+### Check every pipeline run automatically (Asset Bundle)
 
 ```bash
 databricks bundle init https://github.com/bricksentry/bricksentry --template-dir templates/job-check

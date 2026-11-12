@@ -75,10 +75,10 @@
     },
     "bricksentry_version": {
       "type": "string",
-      "default": "0.1.16",
+      "default": "0.1.17",
       "description": "bricksentry version to install in the job (pinned; change it and redeploy to upgrade)",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "pattern_match_failure_message": "Use a version like 0.1.16.",
+      "pattern_match_failure_message": "Use a version like 0.1.17.",
       "order": 9
     }
   },
