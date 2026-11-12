@@ -3,6 +3,7 @@
 # start a run; they have no data change, so the run just finishes ("nothing to check").
 resources:
   jobs:
+{{- if .tables}}
     bricksentry_check:
       name: bricksentry check ({{.project_name}})
       max_concurrent_runs: 1
@@ -57,6 +58,7 @@ resources:
               # Pinned: serverless resolves the dependencies once and caches them, so a range
               # would not pick up new releases. To upgrade, change the version and redeploy.
               - bricksentry[databricks]=={{.bricksentry_version}}
+{{- end}}
 {{- if eq .demo "yes"}}
 
     # Demo: makes a known-bad change to a demo table in {{.scratch_schema}}, then checks it.

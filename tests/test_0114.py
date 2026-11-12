@@ -306,7 +306,7 @@ def _render(text: str, values: dict) -> str:
     """Render the subset of Go templates the bundle uses: {{.x}}, {{`raw`}}, nested
     {{if .x}} / {{if eq .x "y"}} ... {{end}}, with optional {{- trimming."""
     text = re.sub(r"\{\{`(.*?)`\}\}", lambda m: m.group(1).replace("{{", "\x00").replace("}}", "\x01"), text)
-    tok = re.compile(r"(\s*)\{\{(-?) ?(if (?:eq )?\.\w+(?: \"[^\"]*\")?|end)\}\}")
+    tok = re.compile(r"(\s*)\{\{(-?) ?(if (?:eq )?\.\w+(?: \"[^\"]*\")?|else|end)\}\}")
 
     def cond(expr: str) -> bool:
         m = re.fullmatch(r"if (eq )?\.(\w+)(?: \"([^\"]*)\")?", expr)
@@ -321,6 +321,8 @@ def _render(text: str, values: dict) -> str:
         expr = m.group(3)
         if expr == "end":
             stack.pop()
+        elif expr == "else":
+            stack[-1] = not stack[-1]
         else:
             stack.append(cond(expr))
         pos = m.end()
@@ -332,9 +334,14 @@ def _render(text: str, values: dict) -> str:
     return text.replace("\x00", "{{").replace("\x01", "}}")
 
 
-@pytest.mark.parametrize("slack,keys,demo", [("bricksentry/slack_webhook", "main.sales.orders=order_id", "yes"),
-                                             ("", "", "no"), ("", "", "yes")])
-def test_bundle_template_renders(slack, keys, demo):
+TABLES = "main.sales.orders, main.sales.customers"
+
+
+@pytest.mark.parametrize("slack,keys,demo,tables", [
+    ("bricksentry/slack_webhook", "main.sales.orders=order_id", "yes", TABLES),
+    ("", "", "no", TABLES), ("", "", "yes", TABLES), ("", "", "yes", ""),
+])
+def test_bundle_template_renders(slack, keys, demo, tables):
     from pathlib import Path
 
     import yaml
@@ -343,7 +350,8 @@ def test_bundle_template_renders(slack, keys, demo):
     schema = json.loads((root / "databricks_template_schema.json").read_text())
     values = {k: p.get("default", "") for k, p in schema["properties"].items()}
     assert values["bricksentry_version"] == __import__("bricksentry").__version__
-    values.update(tables="main.sales.orders, main.sales.customers", warehouse_id="abc123", slack_secret=slack,
+    assert [k for k, p in schema["properties"].items() if "default" not in p] == ["warehouse_id"]
+    values.update(tables=tables, warehouse_id="abc123", slack_secret=slack,
                   keys=keys, demo=demo)
     for k, p in schema["properties"].items():
         if "pattern" in p:
@@ -352,22 +360,25 @@ def test_bundle_template_renders(slack, keys, demo):
     bundle = yaml.safe_load(_render((proj / "databricks.yml.tmpl").read_text(), values))
     assert bundle["bundle"]["name"] == "bricksentry_check"
     job_yml = yaml.safe_load(_render((proj / "resources" / "bricksentry_check.job.yml.tmpl").read_text(), values))
-    j = job_yml["resources"]["jobs"]["bricksentry_check"]
-    assert j["trigger"]["table_update"]["table_names"] == ["main.sales.orders", "main.sales.customers"]
-    task = j["tasks"][0]
-    params = task["spark_python_task"]["parameters"]
-    assert params[:2] == ["--tables", "{{job.trigger.table_update.updated_tables}}"]
-    assert "{{workspace.url}}/jobs/{{job.id}}/runs/{{job.run_id}}" in params
-    assert ("--slack-secret" in params) == bool(slack)
-    assert ("--keys" in params) == bool(keys)
-    assert task["max_retries"] == 0 and task["disable_auto_optimization"] is True
-    assert j["environments"][0]["spec"]["dependencies"] == [f"bricksentry[databricks]=={values['bricksentry_version']}"]
-    assert task["environment_key"] == j["environments"][0]["environment_key"]
-    assert j["environments"][0]["spec"]["dependencies"][0].startswith("bricksentry[databricks]")
-    # the job task's argv parses, and an unresolved trigger value falls back to --default-tables
-    args = job.build_parser().parse_args(params)
-    assert args.fail_on == "block" and args.since_minutes == 60
     jobs = job_yml["resources"]["jobs"]
+    assert ("bricksentry_check" in jobs) == bool(tables)
+    j = jobs.get("bricksentry_check")
+    if j:
+        assert j["trigger"]["table_update"]["table_names"] == ["main.sales.orders", "main.sales.customers"]
+        task = j["tasks"][0]
+        params = task["spark_python_task"]["parameters"]
+        assert params[:2] == ["--tables", "{{job.trigger.table_update.updated_tables}}"]
+        assert "{{workspace.url}}/jobs/{{job.id}}/runs/{{job.run_id}}" in params
+        assert ("--slack-secret" in params) == bool(slack)
+        assert ("--keys" in params) == bool(keys)
+        assert task["max_retries"] == 0 and task["disable_auto_optimization"] is True
+        assert j["environments"][0]["spec"]["dependencies"] == [f"bricksentry[databricks]=={values['bricksentry_version']}"]
+        assert task["environment_key"] == j["environments"][0]["environment_key"]
+        assert j["environments"][0]["spec"]["dependencies"][0].startswith("bricksentry[databricks]")
+        # the job task's argv parses, and an unresolved trigger value falls back to --default-tables
+        args = job.build_parser().parse_args(params)
+        assert args.fail_on == "block" and args.since_minutes == 60
+
     assert ("bricksentry_demo" in jobs) == (demo == "yes")
     if demo == "yes":
         dj = jobs["bricksentry_demo"]
@@ -379,11 +390,14 @@ def test_bundle_template_renders(slack, keys, demo):
         assert dargs.since is None and dargs.since_minutes is None and dargs.fail_on == "block"
         assert (dargs.slack_secret is not None) == bool(slack)
         assert all(t["max_retries"] == 0 and t["disable_auto_optimization"] for t in dj["tasks"])
-        assert dj["environments"] == j["environments"]
+        assert dj["environments"][0]["spec"]["dependencies"] == [
+            f"bricksentry[databricks]=={values['bricksentry_version']}"]
     msg = _render(schema["success_message"], values)
     assert ("bundle run bricksentry_demo" in msg) == (demo == "yes")
     readme = _render((proj / "README.md.tmpl").read_text(), values)
     assert ("See a block first" in readme) == (demo == "yes")
+    assert ("no tables to watch yet" in readme) == (not tables)
+    assert ("Then any change" in msg) == bool(tables)
     assert "{{job.start_time.iso_datetime}}" in readme
     assert (proj / "src" / "bricksentry_check.py").exists()
 

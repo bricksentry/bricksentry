@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Bundle template changes. `bundle init` reads the template from GitHub, so these apply right away; no new package version is needed.
+
+- `tables` is optional: leave it empty to deploy only the demo job and see a block before choosing your own tables. The only input without a default is now `warehouse_id`. The demo question comes first.
+- The template README documents non-interactive init (`--config-file`) for CI, scripts and AI agents.
+
 ## 0.1.18 (2026-11-12)
 
 See a block in your own workspace within minutes of `bundle init`.

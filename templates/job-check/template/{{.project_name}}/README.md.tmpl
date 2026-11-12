@@ -1,10 +1,13 @@
 # {{.project_name}}: bricksentry checks for your tables
 
-This bundle deploys one serverless job, **bricksentry check ({{.project_name}})**. When any of
+{{if .tables}}This bundle deploys a serverless job, **bricksentry check ({{.project_name}})**. When any of
 these tables changes, it runs and checks what changed:
 
 {{.tables}}
-
+{{else}}This bundle has no tables to watch yet{{if eq .demo "yes"}}, only the demo job{{end}}. To check your own tables, re-run
+`databricks bundle init` with them, or copy the `bricksentry_check` job from the bricksentry
+template README (https://github.com/bricksentry/bricksentry/tree/main/templates/job-check).
+{{end}}
 For each table it compares the version before the change with the version after it (two
 shallow clones in `{{.scratch_schema}}`, dropped after the check; your tables are only read).
 It reports rows added, removed and changed, duplicate or NULL keys, schema changes and totals
