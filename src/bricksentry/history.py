@@ -129,6 +129,24 @@ def _scratch_name(schema: str, table: str, version: int, run: str) -> str:
     return f"{schema}.bs_check_{short}_v{version}_{run}"
 
 
+def _missing_catalog(e: Exception) -> bool:
+    m = str(e).upper()
+    return any(k in m for k in ("NO_SUCH_CATALOG", "CATALOG_NOT_FOUND", "CATALOG DOES NOT EXIST"))
+
+
+def _ensure_scratch(db: Any, schema: str) -> None:
+    try:
+        db.ensure_schema(schema)
+    except Exception as e:
+        if _missing_catalog(e):
+            where = f"catalog {schema.split('.')[0]!r}" if "." in schema else "the default catalog"
+            raise RuntimeError(
+                f"The scratch schema {schema} is in {where}, which doesn't exist in this "
+                "workspace or you can't use it. Set the scratch schema (sandbox_schema, or --scratch-schema in a "
+                "job) to catalog.schema in a catalog you can create tables in.") from None
+        raise
+
+
 def check_change(
     sentry: Sentry,
     table: str,
@@ -160,7 +178,7 @@ def check_change(
     run = uuid.uuid4().hex[:8]
     base = _scratch_name(scratch, table, change.base_version, run)
     cand = _scratch_name(scratch, table, change.version, run)
-    db.ensure_schema(scratch)
+    _ensure_scratch(db, scratch)
     try:
         for target, v in ((base, change.base_version), (cand, change.version)):
             try:

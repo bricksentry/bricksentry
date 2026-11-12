@@ -52,8 +52,13 @@ def run(argv: list[str] | None = None, backend: Any = None, out=print) -> int:
         from bricksentry.backends.databricks_backend import DatabricksBackend
 
         backend = DatabricksBackend(warehouse_id=args.warehouse_id)
+    from bricksentry.history import _ensure_scratch
+
     t = backend.qualified(args.table)
-    backend.ensure_schema(".".join(args.table.split(".")[:2]))
+    try:
+        _ensure_scratch(backend, ".".join(args.table.split(".")[:2]))
+    except RuntimeError as e:
+        raise SystemExit(str(e)) from None
     backend.execute(SEED_SQL.format(t=t))
     out(f"Created {args.table}: 20,000 orders, one row per order_id.")
     backend.execute(BAD_MERGE_SQL.format(t=t))

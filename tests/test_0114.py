@@ -348,7 +348,11 @@ def test_bundle_template_renders(slack, keys, demo, tables):
 
     root = Path(__file__).resolve().parents[1] / "templates" / "job-check"
     schema = json.loads((root / "databricks_template_schema.json").read_text())
+    # Databricks evaluates templated defaults at init; {{default_catalog}} is the workspace default
+    dc = 'if eq (default_catalog) ""}}main{{else}}{{default_catalog}}{{end}}'
+    assert schema["properties"]["scratch_schema"]["default"] == "{{" + dc + ".bricksentry_scratch"
     values = {k: p.get("default", "") for k, p in schema["properties"].items()}
+    values["scratch_schema"] = "main.bricksentry_scratch"
     assert values["bricksentry_version"] == __import__("bricksentry").__version__
     assert [k for k, p in schema["properties"].items() if "default" not in p] == ["warehouse_id"]
     values.update(tables=tables, warehouse_id="abc123", slack_secret=slack,
@@ -489,3 +493,25 @@ def test_job_demo_change_is_blocked_end_to_end():
     text = "\n".join(lines)
     assert code == 1 and "BLOCK" in text and "duplicate-keys: 25" in text
     assert 'TO VERSION AS OF 1' in text
+
+
+def test_missing_scratch_catalog_message():
+    from bricksentry import job_demo
+
+    class NoCatalog(FakeDelta):
+        def ensure_schema(self, schema):
+            raise RuntimeError("[NO_SUCH_CATALOG_EXCEPTION] Catalog 'main' was not found. SQLSTATE: 42704")
+
+    with pytest.raises(RuntimeError, match="scratch is in the default catalog, which doesn't exist"):
+        sentry(NoCatalog()).check_change("sales.orders")
+    b = RecordingBackend()
+    b.ensure_schema = NoCatalog.ensure_schema.__get__(b)
+    with pytest.raises(SystemExit, match="Set the scratch schema"):
+        job_demo.run(["--table", "main.scratch.bricksentry_demo_orders"], backend=b)
+
+    class Other(FakeDelta):
+        def ensure_schema(self, schema):
+            raise RuntimeError("PERMISSION_DENIED")
+
+    with pytest.raises(RuntimeError, match="PERMISSION_DENIED"):
+        sentry(Other()).check_change("sales.orders")

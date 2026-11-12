@@ -6,6 +6,8 @@ Bundle template changes. `bundle init` reads the template from GitHub, so these 
 
 - `tables` is optional: leave it empty to deploy only the demo job and see a block before choosing your own tables. The only input without a default is now `warehouse_id`. The demo question comes first.
 - The template README documents non-interactive init (`--config-file`) for CI, scripts and AI agents.
+- `scratch_schema` defaults to `<your default catalog>.bricksentry_scratch` instead of `main.bricksentry_scratch`. Workspaces without a `main` catalog had their first demo run fail with "catalog not found" instead of the intended BLOCK.
+- Library (in the next release): when the scratch schema's catalog doesn't exist, `check-last-change`, the job task and the demo task say so and how to fix it, instead of a raw `NO_SUCH_CATALOG` error.
 
 ## 0.1.18 (2026-11-12)
 

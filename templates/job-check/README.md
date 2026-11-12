@@ -19,12 +19,13 @@ tasks downstream.
 ```bash
 cat > bricksentry-init.json <<'JSON'
 {"project_name": "bricksentry_check", "demo": "yes", "tables": "",
- "warehouse_id": "<your SQL warehouse ID>", "scratch_schema": "main.bricksentry_scratch"}
+ "warehouse_id": "<your SQL warehouse ID>"}
 JSON
 databricks bundle init https://github.com/bricksentry/bricksentry --template-dir templates/job-check \
   --config-file bricksentry-init.json
 ```
 
-Every other input has a default; the full list with descriptions is in
+Every other input has a default. `scratch_schema` defaults to `<your default catalog>.bricksentry_scratch`;
+set it if you want the scratch tables elsewhere. The full list with descriptions is in
 [`databricks_template_schema.json`](databricks_template_schema.json). Leave `tables` empty to
 deploy only the demo job.

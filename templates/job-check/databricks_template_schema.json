@@ -44,8 +44,8 @@
     },
     "scratch_schema": {
       "type": "string",
-      "default": "main.bricksentry_scratch",
-      "description": "catalog.schema for the temporary shallow clones (created if missing; clones are dropped after each check)",
+      "default": "{{if eq (default_catalog) \"\"}}main{{else}}{{default_catalog}}{{end}}.bricksentry_scratch",
+      "description": "catalog.schema for the temporary shallow clones and the demo table (created if missing). Defaults to your workspace's default catalog",
       "pattern": "^[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$",
       "pattern_match_failure_message": "Use catalog.schema.",
       "order": 6
