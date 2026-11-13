@@ -130,9 +130,11 @@ def test_share_link_prefills_the_form_without_names(run_notebook):
     q = parse_qs(urlparse(url).query)
     assert q["template"] == ["it_caught_this.yml"]
     assert q["verdict"] == ["block"]
-    form = (ROOT / ".github" / "ISSUE_TEMPLATE" / "it_caught_this.yml").read_text()
-    for field in ("verdict", "rules", "facts", "version"):
-        assert f"id: {field}" in form
+    form_path = ROOT / ".github" / "ISSUE_TEMPLATE" / "it_caught_this.yml"
+    if form_path.exists():  # the issue form lives in the repo, not in the sdist
+        form = form_path.read_text()
+        for field in ("verdict", "rules", "facts", "version"):
+            assert f"id: {field}" in form
     assert "orders" not in url and "order_id" not in url and "amount" not in url
 
 

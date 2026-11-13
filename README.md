@@ -395,7 +395,7 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 - **Lineage is recorded at runtime.** Brand-new tables have no downstream history yet. Unity Catalog doesn't capture RDD operations, and UDFs hide column-level mapping; column lineage records source-to-target derivations, so a column used only in a filter or join may not appear.
 - **Keys are required.** Tables without a stable key can't be diffed row by row yet (an aggregate-profile mode is planned).
 - **Changed-table detection uses path globs** from config. It doesn't parse Asset Bundles yet.
-- **Validated on one Databricks workspace so far** (serverless, November 2026, on a 2-million-row table with 0.1.4): lineage, Delta rollback plans, previews on shallow clones, every verdict level, and the sampling guard catching a single changed row. The automated tests use DuckDB and a mocked SDK, so please [open an issue](https://github.com/bricksentry/bricksentry/issues) if something behaves differently on yours.
+- **Validated on Databricks** (serverless, November 2026): a 2-million-row table with 0.1.4 (lineage, rollback plans, previews on shallow clones, every verdict level, the sampling guard catching a single changed row), then live runs of every release up to 0.1.20 on a Free Edition workspace with an HR pipeline: pull-request gating with comment updates, the bundle demo job, `check-last-change` and the newer-changes warning in the CLI, report, JSON and Slack. The automated tests use DuckDB and a mocked SDK, so please [open an issue](https://github.com/bricksentry/bricksentry/issues) if something behaves differently on yours.
 
 ## Roadmap
 

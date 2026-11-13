@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.21 (2026-11-13)
 
 - `bricksentry preview` printed a raw Python traceback when it refused a statement (DROP, TRUNCATE, ALTER, GRANT, several statements). It now prints the refusal and what to do instead, and exits with code 2. A missing `keys` setting is also reported as one clear line. Agents were not affected: the MCP tools already returned the refusal as an error message. Found in a live test on Databricks.
-- README: GitHub Action examples use `@v0.1.20`.
+- The test suite passes from the source distribution: the two checks that read repo-only files (the issue form, the companion package) skip when those files aren't there.
+- README: GitHub Action examples use `@v0.1.20`, and "Validated on" now covers the live runs up to 0.1.20.
 
 ## 0.1.20 (2026-11-13)
 

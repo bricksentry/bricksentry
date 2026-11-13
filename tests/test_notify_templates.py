@@ -155,7 +155,10 @@ def test_companion_package_matches_release():
 
     root = Path(__file__).resolve().parents[1]
     v = bricksentry.__version__
-    comp = tomllib.load(open(root / "packages/bricksentry-mcp/pyproject.toml", "rb"))["project"]
+    path = root / "packages/bricksentry-mcp/pyproject.toml"
+    if not path.exists():
+        pytest.skip("companion package source is in the repo, not in the sdist")
+    comp = tomllib.load(open(path, "rb"))["project"]
     assert comp["version"] == v
     assert comp["dependencies"] == [f"bricksentry[mcp,databricks]=={v}"]
     server = json.load(open(root / "server.json"))
