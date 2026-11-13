@@ -16,6 +16,7 @@ import click
 from bricksentry import __version__
 from bricksentry.config import Config
 from bricksentry.models import Verdict
+from bricksentry.preview import PreviewGuardError
 
 
 def _config(config_path) -> Config:
@@ -163,7 +164,14 @@ def preview(target, sql_text, sql_file, keys, fmt, notify, fail_on, config_path)
         raise click.UsageError("pass --sql or --file")
     sql = sql_text or Path(sql_file).read_text()
     s = _sentry(config_path)
-    out = s.preview_write(sql, target, keys=list(keys) or None)
+    try:
+        out = s.preview_write(sql, target, keys=list(keys) or None)
+    except PreviewGuardError as e:
+        # A refused statement is an expected outcome, not a crash: say why and what to do instead.
+        click.echo(click.style("Refused: ", fg="red", bold=True) + str(e), err=True)
+        raise SystemExit(2) from None
+    except ValueError as e:  # e.g. no key columns configured for the table
+        raise click.ClickException(str(e)) from None
     if notify:
         a = s.get_assessment(out["id"])
         if a is not None:

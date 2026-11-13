@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `bricksentry preview` printed a raw Python traceback when it refused a statement (DROP, TRUNCATE, ALTER, GRANT, several statements). It now prints the refusal and what to do instead, and exits with code 2. A missing `keys` setting is also reported as one clear line. Agents were not affected: the MCP tools already returned the refusal as an error message. Found in a live test on Databricks.
+- README: GitHub Action examples use `@v0.1.20`.
+
 ## 0.1.20 (2026-11-13)
 
 From a question on X: what happens to a valid write that lands after the bad change you want to undo?
@@ -30,6 +35,8 @@ See a block in your own workspace within minutes of `bundle init`.
 - The template README no longer says the trigger is paused in the dev target: the job sets `pause_status: UNPAUSED` on its trigger, which development mode respects.
 
 ## 0.1.17 (2026-11-12)
+
+Not published to PyPI; these changes shipped in 0.1.18.
 
 - `bricksentry demo` now ends with a pipeline commit: a nightly MERGE with a wrong match condition lands, `check-last-change` finds it in the table history (skipping the OPTIMIZE after it), blocks it for 25 duplicate keys, prints the `RESTORE` and applies it. It replaces the old step 2, which only described a rollback because DuckDB has no table history; the demo now keeps versions itself. It still runs offline in about a second and ends with the one-command Databricks setup.
 - The README opens with three steps, each on more real data: the 30-second demo on your laptop (`uvx --from "bricksentry[duckdb]" bricksentry demo`, nothing to install first), checking every change to your tables on Databricks with the bundle template, and stopping bad changes inside your pipeline job, in CI or for AI agents.

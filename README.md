@@ -211,7 +211,7 @@ Check out with `fetch-depth: 0` and give the job `pull-requests: write` permissi
 Or use the bundled GitHub Action, which also writes the report to the job summary:
 
 ```yaml
-- uses: bricksentry/bricksentry@v0.1.13
+- uses: bricksentry/bricksentry@v0.1.20
   with:
     config: bricksentry.yml
     fail-on: needs_human
@@ -236,7 +236,7 @@ jobs:
           fetch-depth: 0
       # Build this PR's version of your pipeline into a per-PR schema first,
       # for example: databricks bundle deploy -t ci && databricks bundle run -t ci
-      - uses: bricksentry/bricksentry@v0.1.13
+      - uses: bricksentry/bricksentry@v0.1.20
         with:
           config: bricksentry.yml
           fail-on: needs_human
