@@ -248,6 +248,8 @@ def check_last_change(table, keys, version, since, sample_pct, allow_no_change, 
             click.echo(f"- {t.summary}")
             for h in t.hits:
                 click.echo(f"    [{h.verdict.value}] {h.rule}: {h.reason}")
+            if t.rollback_warning:
+                click.echo(click.style("Warning before you undo: ", fg="yellow", bold=True) + t.rollback_warning)
             click.echo(f"Undo: {t.rollback}")
         if a.notify:
             click.echo(f"Notify: {', '.join(a.notify)}")

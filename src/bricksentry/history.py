@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +42,8 @@ class Change:
     operation: str
     timestamp: str
     versions: list[int]  # every data-changing version folded into this check
+    # Data changes committed after ``version``: restoring to ``base_version`` undoes them too.
+    newer: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -51,11 +53,39 @@ class Change:
             "operation": self.operation,
             "timestamp": self.timestamp,
             "versions": self.versions,
+            "newer_changes": self.newer,
         }
 
 
 def is_data_op(operation: Any) -> bool:
     return str(operation or "").strip().upper() in DATA_OPS
+
+
+def newer_data_changes(history: list[dict[str, Any]], version: int) -> list[dict[str, Any]]:
+    """Data changes committed after ``version``, oldest first (OPTIMIZE, VACUUM ... left out)."""
+    out = []
+    for h in history:
+        v = h.get("version")
+        if v is None or int(v) <= version or not is_data_op(h.get("operation")):
+            continue
+        out.append({"version": int(v), "operation": str(h.get("operation")), "timestamp": str(h.get("timestamp") or "")})
+    return sorted(out, key=lambda h: h["version"])
+
+
+def rollback_warning(change: Change, max_listed: int = 3) -> str | None:
+    """The warning to show next to the RESTORE when newer data changes exist, else None."""
+    if not change.newer:
+        return None
+    listed = ", ".join(
+        f"v{h['version']} ({h['operation']}{', ' + h['timestamp'] if h['timestamp'] else ''})"
+        for h in change.newer[-max_listed:][::-1])
+    more = len(change.newer) - max_listed
+    if more > 0:
+        listed += f" and {more} more"
+    n = len(change.newer)
+    return (f"Newer data changes exist: {listed}. Restoring to v{change.base_version} also undoes "
+            f"{'it' if n == 1 else 'them'}. Re-run {'that write' if n == 1 else 'those writes'} after "
+            "restoring, or fix forward instead.")
 
 
 def _ts(value: Any) -> datetime | None:
@@ -165,7 +195,8 @@ def check_change(
     if not _NAME.fullmatch(table):
         raise ValueError(f"table must be schema.table or catalog.schema.table; got {table!r}")
 
-    change = pick_change(table, db.history(table, history_limit), version=version, since=since)
+    history = db.history(table, history_limit)
+    change = pick_change(table, history, version=version, since=since)
     keys = keys or sentry.config.spec(table).keys or db.primary_key(table)
     if not keys:
         raise ValueError(
@@ -197,9 +228,18 @@ def check_change(
                 pass
 
     # The change already happened, so undoing it means going back to the version before it.
+    # That also undoes anything written after it, so read the history again (writes may have
+    # landed while the check ran) and warn about newer data changes next to the RESTORE.
+    try:
+        latest = db.history(table, history_limit)
+    except Exception:  # pragma: no cover - keep the first read if a second one fails
+        latest = history
+    change.newer = newer_data_changes(latest, change.version)
+    warning = rollback_warning(change)
     undo = f"RESTORE TABLE {db.qualified(table)} TO VERSION AS OF {change.base_version}"
     for t in a.tables:
         t.rollback = undo
+        t.rollback_warning = warning
         t.summary = f"v{change.base_version} -> v{change.version} ({change.operation}): {t.summary}"
     sentry._save(a)
     return a, change

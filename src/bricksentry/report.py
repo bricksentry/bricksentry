@@ -93,6 +93,8 @@ def _table_section(t: TableAssessment, max_downstream: int) -> list[str]:
                 out.append(f"| … | {len(t.column_downstream) - max_downstream} more | | |")
         out += ["", "</details>", ""]
     if t.rollback and t.rollback.startswith("RESTORE"):
+        if t.rollback_warning:
+            out += [f"> :warning: **Before you restore:** {t.rollback_warning}", ""]
         out += ["**Rollback:**", "```sql", t.rollback, "```", ""]
     elif t.rollback:
         out += [f"**Rollback:** {t.rollback}", ""]

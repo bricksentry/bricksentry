@@ -68,7 +68,7 @@ bricksentry check-last-change main.sales.orders --version 42    # a specific ver
 bricksentry check-last-change main.sales.orders --since 2026-11-11T09:00:00Z --fail-on needs_human
 ```
 
-Keys come from `bricksentry.yml`, `--key`, or the table's `PRIMARY KEY` constraint. OPTIMIZE and VACUUM commits are skipped because they don't change data.
+Keys come from `bricksentry.yml`, `--key`, or the table's `PRIMARY KEY` constraint. OPTIMIZE and VACUUM commits are skipped because they don't change data. If data changes landed after the version you check, the output warns you right above the `RESTORE`, because restoring would undo them too. Acting on an alert later? Run `check-last-change --version N` again first: it lists anything written since.
 
 ### Every feature on an HR pipeline
 

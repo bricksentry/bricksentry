@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.20 (2026-11-13)
+
+From a question on X: what happens to a valid write that lands after the bad change you want to undo?
+
+- **"Newer data changes exist" warning.** `check-last-change` reads the table history again after the check. If data changes were committed after the checked version (because you passed `--version`, or a write landed while the check ran), it warns right above the `RESTORE` that restoring also undoes them, and lists them. The warning appears in the CLI, the job task log, the pull-request report, Slack and Teams alerts, and the JSON (`rollback_warning` on each table, `newer_changes` on the change). OPTIMIZE and VACUUM don't count.
+- README: before acting on an older alert, run `check-last-change --version N` again to see what was written since.
+
 ## 0.1.19 (2026-11-12)
 
 - `bricksentry demo` showed black boxes instead of colored verdict labels in macOS Terminal, which doesn't support 24-bit color. Terminals that don't set `COLORTERM=truecolor` now get the standard named colors; the others keep the website's colors.

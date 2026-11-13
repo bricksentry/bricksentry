@@ -166,6 +166,8 @@ def run(argv: list[str] | None = None, backend: Any = None, out=print) -> int:
         out(f"  {t.summary}")
         for h in t.hits:
             out(f"    [{h.verdict.value}] {h.rule}: {h.reason}")
+        if t.rollback_warning:
+            out(f"  WARNING before you undo: {t.rollback_warning}")
         out(f"  Undo: {t.rollback}")
         for line in s.notify(a):
             out(f"  notify {line}")

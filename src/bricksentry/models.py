@@ -215,6 +215,7 @@ class TableAssessment:
     changed_columns: list[str] = field(default_factory=list)
     column_tags: dict[str, dict[str, str]] = field(default_factory=dict)  # tags on this table's changed columns
     column_downstream: list[ColumnImpact] = field(default_factory=list)
+    rollback_warning: str | None = None  # e.g. newer data changes that the RESTORE would also undo
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -231,6 +232,7 @@ class TableAssessment:
             "column_tags": self.column_tags,
             "column_downstream": [c.to_dict() for c in self.column_downstream],
             "rollback": self.rollback,
+            "rollback_warning": self.rollback_warning,
         }
 
     @classmethod
@@ -248,6 +250,7 @@ class TableAssessment:
             changed_columns=list(d.get("changed_columns") or []),
             column_tags={k: dict(v) for k, v in (d.get("column_tags") or {}).items()},
             column_downstream=[ColumnImpact(**c) for c in d.get("column_downstream") or []],
+            rollback_warning=d.get("rollback_warning"),
         )
 
 

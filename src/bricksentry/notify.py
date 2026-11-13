@@ -192,6 +192,9 @@ def slack_payload(
         lines.append(f"`{h.verdict.value}` *{_slack_escape(h.rule)}* on {_slack_escape(h.table)}: {_slack_escape(_clip(h.reason))}")
     if len(a.hits) > max_reasons:
         lines.append(f"_…and {len(a.hits) - max_reasons} more_")
+    for t in a.tables:
+        if t.rollback_warning:
+            lines.append(f":warning: *Before you restore {_slack_escape(t.table)}:* {_slack_escape(t.rollback_warning)}")
     if a.notify:
         lines.append("*Review requested from:* " + ", ".join(_slack_mention(o, mentions) for o in a.notify))
     link = run_link(pr, run_url)
@@ -235,6 +238,9 @@ def teams_payload(
         body.append(_plain(f"[{h.verdict.value}] {h.rule} on {h.table}: {_clip(h.reason)}"))
     if len(a.hits) > max_reasons:
         body.append(_plain(f"…and {len(a.hits) - max_reasons} more"))
+    for t in a.tables:
+        if t.rollback_warning:
+            body.append(_plain(f"Before you restore {t.table}: {t.rollback_warning}"))
     if a.notify:
         body.append(_plain(f"Review requested from: {', '.join(a.notify)}"))
     body.append({"type": "RichTextBlock", "spacing": "Medium", "inlines": [
