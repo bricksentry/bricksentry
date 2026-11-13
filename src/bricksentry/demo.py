@@ -10,6 +10,7 @@ versions itself; on Databricks the same check reads Delta history.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +79,17 @@ SELECT order_id, region, round(amount * 1.05, 2), status FROM sales.orders WHERE
 """
 
 # Same verdict colors as the website: pass green, warn amber, needs_human orange, block red.
-_COLORS: dict[str, Any] = {"pass": (29, 160, 100), "warn": (214, 160, 40), "needs_human": (235, 115, 40), "block": (210, 40, 50)}
+_RGB_COLORS: dict[str, Any] = {"pass": (29, 160, 100), "warn": (214, 160, 40), "needs_human": (235, 115, 40), "block": (210, 40, 50)}
+# Terminals without 24-bit color (macOS Terminal.app) misread RGB codes, e.g. as a black
+# background, so they get the standard named colors instead.
+_NAMED_COLORS: dict[str, Any] = {"pass": "green", "warn": "yellow", "needs_human": "bright_yellow", "block": "red"}
+
+
+def _truecolor() -> bool:
+    return os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
+
+
+_COLORS: dict[str, Any] = _RGB_COLORS if _truecolor() else _NAMED_COLORS
 
 
 def _verdict(v: str) -> str:

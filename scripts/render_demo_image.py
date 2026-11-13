@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import io
+import os
 import re
 import sys
 from contextlib import redirect_stdout
@@ -25,6 +26,7 @@ BASIC = {30: "#1e293b", 31: "#e5484d", 32: "#22c55e", 33: "#e5a93b", 34: "#60a5f
 def capture() -> str:
     import click
 
+    os.environ["COLORTERM"] = "truecolor"  # keep the website's exact verdict colors in the image
     from bricksentry.demo import run_demo
 
     buf = io.StringIO()

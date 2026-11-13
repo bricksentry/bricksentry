@@ -1,13 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.1.19 (2026-11-12)
 
-Bundle template changes. `bundle init` reads the template from GitHub, so these apply right away; no new package version is needed.
+- `bricksentry demo` showed black boxes instead of colored verdict labels in macOS Terminal, which doesn't support 24-bit color. Terminals that don't set `COLORTERM=truecolor` now get the standard named colors; the others keep the website's colors.
+- When the scratch schema's catalog doesn't exist, `check-last-change`, the job task and the demo task say so and how to fix it, instead of a raw `NO_SUCH_CATALOG` error.
+- README: how to run the demo inside a Databricks or Jupyter notebook (`%pip install`, then `run_demo()`).
+- The job template pins 0.1.19 by default.
+
+Bundle template changes, already live because `bundle init` reads the template from GitHub:
 
 - `tables` is optional: leave it empty to deploy only the demo job and see a block before choosing your own tables. The only input without a default is now `warehouse_id`. The demo question comes first.
 - The template README documents non-interactive init (`--config-file`) for CI, scripts and AI agents.
 - `scratch_schema` defaults to `<your default catalog>.bricksentry_scratch` instead of `main.bricksentry_scratch`. Workspaces without a `main` catalog had their first demo run fail with "catalog not found" instead of the intended BLOCK.
-- Library (in the next release): when the scratch schema's catalog doesn't exist, `check-last-change`, the job task and the demo task say so and how to fix it, instead of a raw `NO_SUCH_CATALOG` error.
 
 ## 0.1.18 (2026-11-12)
 
