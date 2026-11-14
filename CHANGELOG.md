@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `bricksentry preview` with no `keys` configured for the table now exits with code 2 (configuration error), as the CLI help and README document; 0.1.21 exited 1. Found in the live test of 0.1.21.
+
 ## 0.1.21 (2026-11-13)
 
 - `bricksentry preview` printed a raw Python traceback when it refused a statement (DROP, TRUNCATE, ALTER, GRANT, several statements). It now prints the refusal and what to do instead, and exits with code 2. A missing `keys` setting is also reported as one clear line. Agents were not affected: the MCP tools already returned the refusal as an error message. Found in a live test on Databricks.

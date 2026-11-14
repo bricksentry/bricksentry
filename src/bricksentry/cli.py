@@ -170,8 +170,10 @@ def preview(target, sql_text, sql_file, keys, fmt, notify, fail_on, config_path)
         # A refused statement is an expected outcome, not a crash: say why and what to do instead.
         click.echo(click.style("Refused: ", fg="red", bold=True) + str(e), err=True)
         raise SystemExit(2) from None
-    except ValueError as e:  # e.g. no key columns configured for the table
-        raise click.ClickException(str(e)) from None
+    except ValueError as e:  # e.g. no key columns configured: a configuration error, exit 2
+        err = click.ClickException(str(e))
+        err.exit_code = 2
+        raise err from None
     if notify:
         a = s.get_assessment(out["id"])
         if a is not None:

@@ -28,5 +28,5 @@ def test_missing_keys_is_a_clean_error(monkeypatch, tmp_path):
     cfg = tmp_path / "bricksentry.yml"
     cfg.write_text("sandbox_schema: scratch\nassessment_store: false\nlineage: {type: static}\n")
     r = CliRunner().invoke(main, ["preview", "other.table", "--sql", "DELETE FROM other.table", "-c", str(cfg)])
-    assert r.exit_code == 1 and "No keys configured for other.table" in r.output
+    assert r.exit_code == 2 and "No keys configured for other.table" in r.output
     assert isinstance(r.exception, SystemExit)
