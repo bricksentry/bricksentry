@@ -1,0 +1,13 @@
+.git
+.github
+.pytest_cache
+.ruff_cache
+**/__pycache__
+docs
+examples
+tests
+templates
+packages
+scripts
+*.md
+!README.md

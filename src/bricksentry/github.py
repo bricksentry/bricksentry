@@ -6,6 +6,7 @@ import json
 import os
 import urllib.request
 
+from bricksentry import netguard
 from bricksentry.report import MARKER
 
 
@@ -17,7 +18,7 @@ def _req(method: str, url: str, token: str, body: dict | None = None):
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
     if data:
         req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with netguard.urlopen(req, timeout=30) as r:
         return json.loads(r.read() or b"null")
 
 

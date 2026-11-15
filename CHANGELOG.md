@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+Security hardening, following a review on the Canopii MCP Trust Index:
+
+- **Outbound requests are checked.** Slack/Teams webhooks and the GitHub API must use `https://`, must not resolve to loopback, private, link-local or cloud-metadata addresses, and redirects are never followed. A webhook that fails the check is skipped with a one-line reason; the verdict is unchanged. Set `BRICKSENTRY_ALLOW_PRIVATE_URLS=1` for targets on a private network such as GitHub Enterprise Server.
+- **Container image** for the MCP server: `deploy/container/Dockerfile` (non-root user, config mounted read-only). CI builds it on every push and checks that it lists the MCP tools.
+- `SECURITY.md` explains the network behaviour, why the MCP server listens on `0.0.0.0` only on Databricks Apps, and how releases are published.
 - `bricksentry preview` with no `keys` configured for the table now exits with code 2 (configuration error), as the CLI help and README document; 0.1.21 exited 1. Found in the live test of 0.1.21.
 
 ## 0.1.21 (2026-11-13)

@@ -166,7 +166,7 @@ databricks bundle deploy --var warehouse_id=<your-sql-warehouse-id>
 databricks bundle run bricksentry_mcp
 ```
 
-Agents connect to `https://<app-url>/mcp`. The kit starts the server with `--read-only`, which leaves out `preview_write`, so the app never writes. On any other host, `bricksentry mcp --transport streamable-http --host 0.0.0.0 --port 8000` serves the same endpoint. Unity Catalog *MCP Services* are for servers hosted outside Databricks, so a Databricks App is the recommended way to run bricksentry inside it; see the [kit's README](deploy/databricks-app/README.md).
+Agents connect to `https://<app-url>/mcp`. The kit starts the server with `--read-only`, which leaves out `preview_write`, so the app never writes. On any other host, `bricksentry mcp --transport streamable-http --port 8000` serves the same endpoint (on 127.0.0.1 unless you pass `--host`). To run it isolated, use the container image in [`deploy/container`](deploy/container/Dockerfile): non-root, config mounted read-only. [SECURITY.md](SECURITY.md) explains what bricksentry may reach over the network. Unity Catalog *MCP Services* are for servers hosted outside Databricks, so a Databricks App is the recommended way to run bricksentry inside it; see the [kit's README](deploy/databricks-app/README.md).
 
 ## For data engineers: CLI and CI
 

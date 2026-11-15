@@ -48,3 +48,28 @@ jobs:
       - run: pip install build twine
       - run: python -m build
       - run: twine check --strict dist/*
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the MCP server image
+        run: docker build -f deploy/container/Dockerfile -t bricksentry-mcp:ci .
+      - name: Runs as non-root
+        run: test "$(docker run --rm --entrypoint id bricksentry-mcp:ci -un)" = bricksentry
+      - name: Serves the MCP tools over stdio
+        run: |
+          printf 'sandbox_schema: scratch\nlineage: {type: static}\nbackend: {type: duckdb, path: ":memory:"}\n' > /tmp/bs.yml
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            | timeout 60 docker run -i --rm -v /tmp/bs.yml:/config/bricksentry.yml:ro bricksentry-mcp:ci > /tmp/out.jsonl || true
+          python3 - <<'PY'
+          import json
+          lines = [json.loads(l) for l in open("/tmp/out.jsonl") if l.strip()]
+          tools = next(m["result"]["tools"] for m in lines if m.get("id") == 2)
+          names = sorted(t["name"] for t in tools)
+          print(names)
+          assert {"whats_downstream", "preview_write", "safe_to_ship"} <= set(names), names
+          PY

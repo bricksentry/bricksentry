@@ -39,6 +39,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
+from bricksentry import netguard
 from bricksentry.models import Assessment, RuleHit, TableAssessment, Verdict
 
 _EMOJI = {"pass": ":large_green_circle:", "warn": ":large_yellow_circle:",
@@ -271,7 +272,7 @@ def _post(url: str, payload: dict[str, Any], timeout: int = 15) -> None:
     req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST")
     req.add_header("Content-Type", "application/json")
     req.add_header("User-Agent", f"bricksentry/{_version()}")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with netguard.urlopen(req, timeout=timeout) as r:
         r.read()
 
 
@@ -339,8 +340,10 @@ def send(a: Assessment, settings: NotifySettings, pr: str | None = None, force: 
     for name, url, build in channels:
         if not url:
             continue
-        if not url.startswith("https://"):
-            out.append(f"{name}: skipped, webhook URL must start with https://")
+        try:
+            netguard.check_url(url, "webhook URL")
+        except netguard.UnsafeURLError as e:
+            out.append(f"{name}: skipped, {e}")
             continue
         try:
             _deliver(url, build())
