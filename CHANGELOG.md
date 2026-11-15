@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.22 (2026-11-15)
 
 Security hardening, following a review on the Canopii MCP Trust Index:
 
