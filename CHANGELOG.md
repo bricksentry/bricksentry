@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.1.23 (unreleased)
+## 0.1.23 (2026-11-16)
 
-From an independent-style review of accuracy, auditability and documentation:
+From a review of accuracy, auditability and documentation:
 
 - **Exact totals.** Sums of decimal and integer columns are added as `DECIMAL(38, x)` instead of `DOUBLE`, so totals on large tables don't drift by cents and big integer columns can't overflow. Floating-point columns are still summed as `DOUBLE`.
 - **Duplicated keys are matched one to one.** When a key appears more than once (including many rows with a NULL key, which match each other), copies are numbered and copy *n* is matched with copy *n*. Before, every copy matched every other copy: 2,000 NULL-key rows on each side joined into 4,000,000 pairs, and a duplicated row counted as a second match instead of an added row. A bad MERGE that duplicates rows now shows them as added, and the diff notes that copies were paired. Tables without duplicate keys run exactly as before.
