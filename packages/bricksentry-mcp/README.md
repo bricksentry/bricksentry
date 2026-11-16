@@ -29,4 +29,4 @@ claude mcp add bricksentry -- uvx bricksentry-mcp --config /full/path/to/brickse
 
 Use a full path to `bricksentry.yml`: clients start the server from their own working folder. If an app can't find `uvx`, use its full path (`which uvx`).
 
-`bricksentry-mcp` accepts the same options as `bricksentry mcp`, for example `--transport streamable-http`. Docs: [bricksentry.org/docs/agents](https://bricksentry.org/docs/agents). License: Apache-2.0.
+`bricksentry-mcp` accepts the same options as `bricksentry mcp`, for example `--transport streamable-http`. License: Apache-2.0. Docs: <https://bricksentry.org/docs/agents>

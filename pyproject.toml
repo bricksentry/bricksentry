@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "bricksentry"
 version = "0.1.22"
-description = "Change-safety for Databricks pipelines and the AI agents that edit them: data diffs, Unity Catalog blast radius, policy verdicts and rollback plans."
+description = "Change impact analysis and deployment guardrails for data changes on Databricks, for pipelines and the AI agents that edit them: data diffs, Unity Catalog blast radius, policy verdicts and rollback plans."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -13,6 +13,7 @@ authors = [{ name = "Brahma" }]
 keywords = [
   "databricks", "delta-lake", "unity-catalog", "data-engineering", "data-diff",
   "lineage", "impact-analysis", "ci", "mcp", "ai-agents", "data-quality",
+  "change-impact-analysis", "deployment-guardrails", "rollback",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",

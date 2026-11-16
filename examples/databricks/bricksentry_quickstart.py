@@ -257,5 +257,5 @@ agent_tools.set_sentry(None)
 # MAGIC %md
 # MAGIC ## Next steps
 # MAGIC - **In CI:** `bricksentry init` writes `bricksentry.yml` and `policy.yml`; add `bricksentry assess --from-git origin/main --comment` to your pull-request workflow. See [bricksentry.org/docs/ci](https://bricksentry.org/docs/ci).
-# MAGIC - **For AI agents:** `bricksentry mcp` exposes these same tools over MCP. See [bricksentry.org/docs/agents](https://bricksentry.org/docs/agents).
+# MAGIC - **For AI agents:** `bricksentry mcp` exposes these same tools over MCP, docs at <https://bricksentry.org/docs/agents>
 # MAGIC - **Feedback and bugs:** [github.com/bricksentry/bricksentry/issues](https://github.com/bricksentry/bricksentry/issues)

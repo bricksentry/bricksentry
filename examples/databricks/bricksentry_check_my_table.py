@@ -229,5 +229,5 @@ print("Share what it found:\nhttps://github.com/bricksentry/bricksentry/issues/n
 # MAGIC %md
 # MAGIC ## Next steps
 # MAGIC - **Check every change before it ships:** run the same check in CI on pull requests. See [bricksentry.org/docs/ci](https://bricksentry.org/docs/ci).
-# MAGIC - **Let AI agents check their own changes:** `uvx bricksentry-mcp`. See [bricksentry.org/docs/agents](https://bricksentry.org/docs/agents).
+# MAGIC - **Let AI agents check their own changes:** `uvx bricksentry-mcp`, docs at <https://bricksentry.org/docs/agents>
 # MAGIC - **Get alerts:** set a Slack or Teams webhook and run `bricksentry test-alert`. See [bricksentry.org/docs/configuration](https://bricksentry.org/docs/configuration).
