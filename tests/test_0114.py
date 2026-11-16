@@ -107,7 +107,9 @@ def test_check_change_end_to_end():
     a, change = sentry(db).check_change("sales.orders")
     t = a.tables[0]
     assert change.version == 3 and change.base_version == 2
-    assert t.diff.added_rows == 0 and t.diff.base_rows == 1800 and t.diff.candidate_rows == 1804
+    # The 4 duplicated copies count as added (0.1.23); before, each copy was counted
+    # as a second match of the same key, which reported 0 added for a table that grew.
+    assert t.diff.added_rows == 4 and t.diff.base_rows == 1800 and t.diff.candidate_rows == 1804
     assert t.diff.duplicate_keys_candidate > 0
     assert a.verdict.value == "block"  # duplicate keys
     assert t.rollback == 'RESTORE TABLE "sales"."orders" TO VERSION AS OF 2'

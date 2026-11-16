@@ -40,6 +40,8 @@ All conditions inside one ``when`` must hold (AND). Use several rules for OR.
 from __future__ import annotations
 
 import fnmatch
+import hashlib
+import json
 from typing import Any
 
 from bricksentry.measures import is_measure
@@ -104,6 +106,10 @@ def _tag_label(want: Any) -> str:
 class Policy:
     def __init__(self, spec: dict[str, Any] | None = None):
         spec = spec if spec is not None else DEFAULT_POLICY
+        # A fingerprint of the rules, recorded on every assessment so a verdict can be
+        # traced to the exact policy that produced it.
+        canonical = json.dumps(spec, sort_keys=True, default=str, separators=(",", ":"))
+        self.sha256 = hashlib.sha256(canonical.encode()).hexdigest()
         self.default = Verdict(spec.get("default", "pass"))
         self.notify_on = Verdict(spec.get("notify_owners_on", "needs_human"))
         self.rules = spec.get("rules") or []

@@ -109,6 +109,9 @@ class DatabricksBackend(Backend):
         cols = ", ".join(self.quote(c) for c in columns)
         return f"SUM(CAST(xxhash64({cols}) AS DECIMAL(38, 0)))"
 
+    def row_hash(self, columns: list[str]) -> str | None:
+        return f"xxhash64({', '.join(self.quote(c) for c in columns)})"
+
     def sample_predicate(self, keys: list[str], pct: float, alias: str | None = None) -> str:
         pre = f"{alias}." if alias else ""
         cols = ", ".join(f"{pre}{self.quote(k)}" for k in keys)

@@ -54,6 +54,22 @@ class Backend(ABC):
         backend has no cheap row hash, and the guard is skipped."""
         return None
 
+    def row_hash(self, columns: list[str]) -> str | None:
+        """SQL for a hash of one row's ``columns``; orders copies of a duplicated key
+        so identical copies pair up. ``None`` means unsupported (copies are paired in
+        no particular order)."""
+        return None
+
+    def exact_sum(self, expr: str, type_name: str) -> str:
+        """SUM that doesn't drift on large tables: decimals and integers are added as
+        DECIMAL(38, x), only floating-point columns as DOUBLE."""
+        t = type_name.lower()
+        if t.startswith(("decimal", "numeric")):
+            return f"SUM({expr})"
+        if t.startswith(("float", "double", "real")):
+            return f"SUM(CAST({expr} AS DOUBLE))"
+        return f"SUM(CAST({expr} AS DECIMAL(38, 0)))"
+
     @abstractmethod
     def days_ago(self, days: int) -> str:
         """SQL expression for the date ``days`` days ago."""

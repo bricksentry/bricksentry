@@ -114,14 +114,50 @@ def _diff(
     # A marker column says whether a joined row exists on each side. Testing the key
     # for NULL instead would count a NULL-key row as both added and removed.
     present = q("__bs_present")
+    occ = q("__bs_occ")
+    kc = ", ".join(q(k) for k in keys)
 
-    def side(tbl: str, alias: str) -> str:
-        where = f" WHERE {backend.sample_predicate(keys, sample_pct)}" if sample_pct else ""
-        return f"{alias} AS (SELECT *, 1 AS {present} FROM {backend.qualified(tbl)}{where})"
+    def sample_where() -> str:
+        return f" WHERE {backend.sample_predicate(keys, sample_pct)}" if sample_pct else ""
 
-    ctes = f"WITH {side(base, 'b_src')}, {side(candidate, 'c_src')}"
+    def raw_cte(tbl: str, alias: str) -> str:
+        return f"{alias} AS (SELECT *, 1 AS {present} FROM {backend.qualified(tbl)}{sample_where()})"
+
+    # Duplicate keys first: a key that appears more than once (including many NULL
+    # keys, which match each other) would multiply rows in the key join.
+    raw_ctes = f"WITH {raw_cte(base, 'b_src')}, {raw_cte(candidate, 'c_src')}"
+
+    def dupes(tbl_cte: str) -> int:
+        sql = (
+            f"{raw_ctes} SELECT COUNT(*) AS n FROM "
+            f"(SELECT {kc} FROM {tbl_cte} GROUP BY {kc} HAVING COUNT(*) > 1) d"
+        )
+        return int(backend.scalar(sql) or 0)
+
+    dup_b, dup_c = dupes("b_src"), dupes("c_src")
+    notes: list[str] = []
+    pair_copies = bool(dup_b or dup_c)
+    if pair_copies:
+        # Number the copies of each key and match copy n to copy n, so the join stays
+        # one to one: an extra copy counts as added (or removed), not as a second match.
+        # Ordering by a row hash pairs identical copies with each other.
+        order = backend.row_hash([c for c in b_cols if c in c_cols and c not in schema.type_changed]) or kc
+
+        def side(tbl: str, alias: str) -> str:
+            return (f"{alias} AS (SELECT *, 1 AS {present}, ROW_NUMBER() OVER (PARTITION BY {kc} "
+                    f"ORDER BY {order}) AS {occ} FROM {backend.qualified(tbl)}{sample_where()})")
+
+        ctes = f"WITH {side(base, 'b_src')}, {side(candidate, 'c_src')}"
+        notes.append(
+            "Some keys appear more than once, so copies of the same key were paired one to one "
+            "(an extra copy counts as added or removed, not as another match)."
+        )
+    else:
+        ctes = raw_ctes
     # Null-safe key match: a NULL key in production matches a NULL key in the candidate.
     join_on = " AND ".join(f"b.{q(k)} IS NOT DISTINCT FROM c.{q(k)}" for k in keys)
+    if pair_copies:
+        join_on += f" AND b.{occ} = c.{occ}"
     in_b, in_c = f"b.{present} IS NOT NULL", f"c.{present} IS NOT NULL"
 
     def cmp(col: str) -> str:
@@ -149,26 +185,18 @@ def _diff(
     )
     j = backend.query(join_sql)[0]
 
-    # Row counts, nulls, numeric sums per side.
+    # Row counts, nulls, numeric sums per side. Sums are exact for decimals and integers.
     def profile(tbl_cte: str, cols: dict[str, str]) -> dict:
         any_null_key = " OR ".join(f"{q(k)} IS NULL" for k in keys)
         parts = ["COUNT(*) AS n_rows", f"SUM(CASE WHEN {any_null_key} THEN 1 ELSE 0 END) AS null_keys"]
         for i, col in enumerate(common):
             parts.append(f"SUM(CASE WHEN {q(col)} IS NULL THEN 1 ELSE 0 END) AS nul_{i}")
             if backend.is_numeric(cols[col]):
-                parts.append(f"SUM(CAST({q(col)} AS DOUBLE)) AS sum_{i}")
-        return backend.query(f"{ctes} SELECT {', '.join(parts)} FROM {tbl_cte}")[0]
+                parts.append(f"{backend.exact_sum(q(col), cols[col])} AS sum_{i}")
+        return backend.query(f"{raw_ctes} SELECT {', '.join(parts)} FROM {tbl_cte}")[0]
 
     pb = profile("b_src", b_cols)
     pc = profile("c_src", c_cols)
-
-    def dupes(tbl_cte: str) -> int:
-        kc = ", ".join(q(k) for k in keys)
-        sql = (
-            f"{ctes} SELECT COUNT(*) AS n FROM "
-            f"(SELECT {kc} FROM {tbl_cte} GROUP BY {kc} HAVING COUNT(*) > 1) d"
-        )
-        return int(backend.scalar(sql) or 0)
 
     col_changes: list[ColumnChange] = []
     for i, col in enumerate(common):
@@ -225,12 +253,13 @@ def _diff(
         unchanged_rows=int(j.get("unchanged_rows") or 0),
         schema=schema,
         columns=col_changes,
-        duplicate_keys_base=dupes("b_src"),
-        duplicate_keys_candidate=dupes("c_src"),
+        duplicate_keys_base=dup_b,
+        duplicate_keys_candidate=dup_c,
         null_keys_base=int(pb.get("null_keys") or 0),
         null_keys_candidate=int(pc.get("null_keys") or 0),
         segments=segments,
         sampled_pct=sample_pct,
+        notes=notes,
     )
 
 

@@ -91,6 +91,7 @@ class TableDiff:
     sampled_pct: float | None = None
     sample_note: str | None = None
     error: str | None = None
+    notes: list[str] = field(default_factory=list)
 
     def _pct(self, n: int) -> float:
         denom = max(self.base_rows, 1)
@@ -260,6 +261,11 @@ class Assessment:
     tables: list[TableAssessment]
     verdict: Verdict
     notify: list[str] = field(default_factory=list)
+    # Audit trail: when, with which bricksentry and policy, and who asked.
+    created_at: str | None = None  # UTC, ISO 8601
+    bricksentry_version: str | None = None
+    policy_sha256: str | None = None  # fingerprint of the policy rules that produced the verdict
+    triggered_by: str | None = None  # BRICKSENTRY_ACTOR, or the GitHub actor in GitHub Actions
 
     @property
     def hits(self) -> list[RuleHit]:
@@ -272,6 +278,10 @@ class Assessment:
             "risk_tier": self.verdict.risk_tier,
             "safe_to_ship": self.verdict in (Verdict.PASS, Verdict.WARN),
             "notify": self.notify,
+            "created_at": self.created_at,
+            "bricksentry_version": self.bricksentry_version,
+            "policy_sha256": self.policy_sha256,
+            "triggered_by": self.triggered_by,
             "rule_hits": [h.to_dict() for h in self.hits],
             "tables": [t.to_dict() for t in self.tables],
         }
@@ -283,4 +293,8 @@ class Assessment:
             tables=[TableAssessment.from_dict(t) for t in d.get("tables") or []],
             verdict=Verdict(d["verdict"]),
             notify=list(d.get("notify") or []),
+            created_at=d.get("created_at"),
+            bricksentry_version=d.get("bricksentry_version"),
+            policy_sha256=d.get("policy_sha256"),
+            triggered_by=d.get("triggered_by"),
         )

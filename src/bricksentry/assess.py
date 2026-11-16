@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from bricksentry.backends.base import Backend, make_backend
@@ -138,6 +140,10 @@ class Sentry:
             tables=results,
             verdict=Verdict.worst([t.verdict for t in results]),
             notify=sorted(notify),
+            created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            bricksentry_version=_version(),
+            policy_sha256=self.policy.sha256,
+            triggered_by=_actor(),
         )
         self._assessments[a.id] = a
         self._save(a)
@@ -253,6 +259,22 @@ class Sentry:
 
     def get_diff(self, table: str) -> TableDiff | None:
         return self._diffs.get(table)
+
+
+def _version() -> str:
+    from bricksentry import __version__  # imported late: bricksentry/__init__ imports this module
+
+    return __version__
+
+
+def _actor() -> str | None:
+    """Who asked for the check: BRICKSENTRY_ACTOR if set, else the GitHub actor in
+    GitHub Actions. Nothing is read from the machine itself."""
+    if os.environ.get("BRICKSENTRY_ACTOR"):
+        return os.environ["BRICKSENTRY_ACTOR"].strip()[:200]
+    if os.environ.get("GITHUB_ACTOR"):
+        return "github:" + os.environ["GITHUB_ACTOR"].strip()[:200]
+    return None
 
 
 def _first_line(e: Exception, limit: int = 200) -> str:

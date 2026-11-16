@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.23 (unreleased)
+
+From an independent-style review of accuracy, auditability and documentation:
+
+- **Exact totals.** Sums of decimal and integer columns are added as `DECIMAL(38, x)` instead of `DOUBLE`, so totals on large tables don't drift by cents and big integer columns can't overflow. Floating-point columns are still summed as `DOUBLE`.
+- **Duplicated keys are matched one to one.** When a key appears more than once (including many rows with a NULL key, which match each other), copies are numbered and copy *n* is matched with copy *n*. Before, every copy matched every other copy: 2,000 NULL-key rows on each side joined into 4,000,000 pairs, and a duplicated row counted as a second match instead of an added row. A bad MERGE that duplicates rows now shows them as added, and the diff notes that copies were paired. Tables without duplicate keys run exactly as before.
+- **Audit trail on every assessment:** `created_at` (UTC), `bricksentry_version`, `policy_sha256` (a fingerprint of the rules behind the verdict) and `triggered_by` (`BRICKSENTRY_ACTOR`, or the GitHub actor in GitHub Actions). In the JSON and the pull-request report footer. Older saved assessments still load.
+- README: permissions needed per feature, what a check costs, and the audit trail.
+
 ## 0.1.22 (2026-11-15)
 
 Security hardening, following a review on the Canopii MCP Trust Index:

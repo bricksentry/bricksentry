@@ -385,10 +385,27 @@ All conditions in a `when` must hold. The most severe matching rule sets the ver
 
 ## Permissions needed on Databricks
 
-- `CAN USE` on a SQL warehouse.
-- `SELECT` on the tables you assess and their candidates.
-- `SELECT` on `system.access.table_lineage` (and `system.access.column_lineage` for column-level impact), plus `system.information_schema` for owners, table tags and column tags. Without lineage access bricksentry still diffs, and adds a `lineage-unavailable` warning (blast radius unknown) instead of guessing.
-- `CREATE TABLE` on `sandbox_schema`, for `preview_write` and `check-last-change`. `check-last-change` also needs the table's Delta history (versions not yet removed by `VACUUM`).
+Grant only what the features you use need. Everything is read-only except the scratch schema.
+
+| Feature | Needs |
+|---|---|
+| Any check | `CAN USE` on a SQL warehouse |
+| Data diff (`diff`, `assess`, pull-request checks) | `SELECT` on the tables and their candidates |
+| `check-last-change`, the job task | `SELECT` on the table and its Delta history (versions not yet removed by `VACUUM`), and `CREATE TABLE` on `sandbox_schema` for two short-lived shallow clones |
+| `preview_write` (agents) | `CREATE TABLE` on `sandbox_schema`; the write only ever runs on a clone there |
+| Blast radius | `SELECT` on `system.access.table_lineage` |
+| Column-level impact | `SELECT` on `system.access.column_lineage` |
+| Owners and tags | `SELECT` on `system.information_schema` (tables, table tags, column tags) |
+
+Without lineage access bricksentry still diffs, and adds a `lineage-unavailable` warning (blast radius unknown) instead of guessing. A dedicated service principal with exactly these grants is the recommended setup for jobs and the MCP server.
+
+## What a check costs
+
+The work runs on your SQL warehouse as plain SQL; nothing large is copied out. One table diff runs about five queries: a duplicate-key count on each side, one full outer join on the key columns, and one profile (row count, nulls, totals) per side, plus up to ten small queries for example values. Each reads both versions of the table, so cost grows with table size: seconds for millions of rows, minutes and real warehouse cost for hundreds of millions. For big tables, set `sample_pct` (a fixed hash sample of keys, checked against a full-table checksum so a change outside the sample isn't missed), or check only the tables that matter. Lineage lookups are one query per depth level, bounded by `lookback_days`.
+
+## Audit trail
+
+Every assessment records when it ran (UTC), the bricksentry version, a SHA-256 fingerprint of the policy rules that produced the verdict, and who triggered it (`BRICKSENTRY_ACTOR`, or the GitHub actor in GitHub Actions). They're in the JSON and in the footer of the pull-request report, so a verdict can be traced to the exact rules behind it. Assessments are saved as JSON under `assessment_store`; point it at a shared, access-controlled folder to keep a history.
 
 ## Known limits (v0.1.x)
 
