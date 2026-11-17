@@ -50,6 +50,12 @@ class ColumnChange:
             return None
         return (self.candidate_sum - self.base_sum) / abs(self.base_sum) * 100
 
+    @property
+    def sum_moved_from_zero(self) -> bool:
+        """The total was zero (or had no values) and now isn't. No percentage exists for
+        that, so it is reported on its own: a total going from 0 to millions has moved."""
+        return self.base_sum in (None, 0) and self.candidate_sum not in (None, 0)
+
 
 @dataclass
 class SchemaChange:
@@ -137,6 +143,7 @@ class TableDiff:
         d["is_identical"] = self.is_identical
         for c, cc in zip(d["columns"], self.columns, strict=False):
             c["sum_change_pct"] = cc.sum_change_pct
+            c["sum_moved_from_zero"] = cc.sum_moved_from_zero
         return d
 
     @classmethod

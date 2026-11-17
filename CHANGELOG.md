@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+Fixes for what two worst-case live tests of 0.1.25 on Databricks found.
+
+- **A changed copy of a duplicated key no longer shifts how the other copies pair.** 0.1.23 numbered the copies of a key by row hash and matched copy *n* with copy *n*, so one changed copy could move every copy after it: 2,000 rows sharing a NULL key with 2 real changes reported over a thousand changed rows (50,000 such rows: 36,563). Identical copies are now matched first; only the copies left over are paired. The same test now reports exactly 2 changed. New validation scenario `null_keys_changed`.
+- **A total moving away from zero now fires `sum_change_pct_gt`.** A column whose total went from 0 to 5 had no percentage change, so the rule never matched. It now matches, with the reason "sum(col) 0 -> 5", and the plain-English explanation lists it under totals.
+- **An overflowing exact total no longer loses the whole diff.** If a `DECIMAL(38)` total overflows, totals fall back to `DOUBLE` (or are skipped), the row counts and changes are still reported, and the diff notes it.
+- **The rollback warning lists newer table changes that aren't data** (renamed columns, table properties, constraints): `RESTORE` undoes those too. Maintenance (OPTIMIZE, VACUUM, ANALYZE) is still ignored.
+- **Clearer policy mistakes.** A verdict typo (`then: blok`) names the valid verdicts; verdicts are accepted in any case; `policy: strict` without `builtin:` says to write `builtin:strict`; a policy with no rules warns that every change will pass.
+- `preview_write` / `bricksentry preview` show one line when the clone or the statement fails ("The statement failed on the preview clone, so production was not touched: …") instead of the engine's full error. MCP tool errors keep only the first line.
+
 ## 0.1.25 (2026-11-16)
 
 - **Validation you can reproduce.** `VALIDATION.md` records every live test on Databricks with its numbers, the results that weren't perfect and the bugs each test found. `bricksentry.validation.run_validation()` and the new notebook `examples/databricks/bricksentry_validation.py` run the same ten risky changes on your own workspace in a scratch schema and drop everything afterwards. A new issue form, "Validation report", collects results from other setups.

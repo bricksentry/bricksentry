@@ -25,6 +25,13 @@ DATA_OPS = frozenset({
     "COPY INTO", "RESTORE",
 })
 
+# Maintenance that a RESTORE doesn't meaningfully undo. Anything else that isn't a data
+# change (RENAME COLUMN, SET TBLPROPERTIES, ADD COLUMNS, constraints ...) is undone by a
+# RESTORE too, so the rollback warning lists it.
+MAINTENANCE_OPS = frozenset({
+    "OPTIMIZE", "VACUUM START", "VACUUM END", "ANALYZE", "COMPUTE STATISTICS", "FSCK", "REORG",
+})
+
 _NAME = re.compile(r"[A-Za-z0-9_]+(\.[A-Za-z0-9_]+){1,2}")
 
 
@@ -44,6 +51,9 @@ class Change:
     versions: list[int]  # every data-changing version folded into this check
     # Data changes committed after ``version``: restoring to ``base_version`` undoes them too.
     newer: list[dict[str, Any]] = field(default_factory=list)
+    # Table changes that aren't data (renamed columns, properties, constraints) after ``version``:
+    # a RESTORE undoes these too.
+    newer_other: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -54,6 +64,7 @@ class Change:
             "timestamp": self.timestamp,
             "versions": self.versions,
             "newer_changes": self.newer,
+            "newer_table_changes": self.newer_other,
         }
 
 
@@ -72,10 +83,30 @@ def newer_data_changes(history: list[dict[str, Any]], version: int) -> list[dict
     return sorted(out, key=lambda h: h["version"])
 
 
+def newer_table_changes(history: list[dict[str, Any]], version: int) -> list[dict[str, Any]]:
+    """Changes after ``version`` that aren't data or maintenance, oldest first: RENAME COLUMN,
+    SET TBLPROPERTIES, ADD COLUMNS, constraints... A RESTORE undoes these too."""
+    out = []
+    for h in history:
+        v = h.get("version")
+        op = str(h.get("operation") or "").strip().upper()
+        if v is None or int(v) <= version or is_data_op(op) or op in MAINTENANCE_OPS or not op:
+            continue
+        out.append({"version": int(v), "operation": str(h.get("operation")), "timestamp": str(h.get("timestamp") or "")})
+    return sorted(out, key=lambda h: h["version"])
+
+
 def rollback_warning(change: Change, max_listed: int = 3) -> str | None:
-    """The warning to show next to the RESTORE when newer data changes exist, else None."""
+    """The warning to show next to the RESTORE when newer changes exist, else None."""
     if not change.newer:
-        return None
+        if not change.newer_other:
+            return None
+        listed = ", ".join(f"v{h['version']} ({h['operation']})" for h in change.newer_other[-max_listed:][::-1])
+        more = len(change.newer_other) - max_listed
+        if more > 0:
+            listed += f" and {more} more"
+        return (f"Newer table changes exist: {listed}. Restoring to v{change.base_version} also undoes "
+                f"{'it' if len(change.newer_other) == 1 else 'them'}; re-apply after restoring, or fix forward instead.")
     listed = ", ".join(
         f"v{h['version']} ({h['operation']}{', ' + h['timestamp'] if h['timestamp'] else ''})"
         for h in change.newer[-max_listed:][::-1])
@@ -83,9 +114,13 @@ def rollback_warning(change: Change, max_listed: int = 3) -> str | None:
     if more > 0:
         listed += f" and {more} more"
     n = len(change.newer)
-    return (f"Newer data changes exist: {listed}. Restoring to v{change.base_version} also undoes "
+    text = (f"Newer data changes exist: {listed}. Restoring to v{change.base_version} also undoes "
             f"{'it' if n == 1 else 'them'}. Re-run {'that write' if n == 1 else 'those writes'} after "
             "restoring, or fix forward instead.")
+    if change.newer_other:
+        others = ", ".join(f"v{h['version']} ({h['operation']})" for h in change.newer_other[-max_listed:][::-1])
+        text += f" It also undoes these table changes: {others}."
+    return text
 
 
 def _ts(value: Any) -> datetime | None:
@@ -258,6 +293,7 @@ def check_change(
     except Exception:  # pragma: no cover - keep the first read if a second one fails
         latest = history
     change.newer = newer_data_changes(latest, change.version)
+    change.newer_other = newer_table_changes(latest, change.version)
     warning = rollback_warning(change)
     undo = f"RESTORE TABLE {db.qualified(table)} TO VERSION AS OF {change.base_version}"
     for t in a.tables:

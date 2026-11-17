@@ -47,7 +47,11 @@ def _safe(fn):
         try:
             return fn(*args, **kwargs)
         except Exception as e:
-            return {"error": f"{type(e).__name__}: {e}"}
+            text = str(e).strip()
+            line = text.splitlines()[0] if text else ""
+            if len(line) > 300:
+                line = line[:297] + "..."
+            return {"error": f"{type(e).__name__}: {line}"}
 
     return wrapper
 

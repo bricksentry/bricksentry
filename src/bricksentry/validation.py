@@ -158,6 +158,7 @@ class _Validation:
         out = []
         for fn in (self.row_loss, self.bad_merge, self.everything_wrong, self.hidden_in_sample,
                    self.certified_totals_default, self.certified_totals_strict, self.null_keys,
+                   self.null_keys_changed,
                    self.exact_totals, self.landed_change, self.typo_table):
             t0 = time.time()
             try:
@@ -252,6 +253,17 @@ class _Validation:
         return ScenarioResult("null_keys", "2,000 rows with a NULL key on each side of an unchanged table",
                               "matched one to one: 3,000 unchanged, nothing added or removed",
                               f"unchanged={d.unchanged_rows}, added={d.added_rows}, removed={d.removed_rows}", ok)
+
+    def null_keys_changed(self) -> ScenarioResult:
+        base = self.create("bsv_nulls2", f"SELECT CASE WHEN i <= 2000 THEN NULL ELSE i END AS id, i AS v "
+                                         f"FROM ({self.ids(3000)}) ids")
+        cand = self.create("bsv_c_nulls2", f"SELECT id, CASE WHEN v IN (10, 1500) THEN v + 1000000 ELSE v END AS v "
+                                           f"FROM {self.q(base)}")
+        d = self.sentry.diff(base, cand, keys=["id"], table=base)
+        ok = (d.added_rows, d.removed_rows, d.changed_rows) == (0, 0, 2)
+        return ScenarioResult("null_keys_changed", "2 of 2,000 rows sharing a NULL key get a new value",
+                              "exactly 2 changed; the other copies still match",
+                              f"changed={d.changed_rows}, added={d.added_rows}, removed={d.removed_rows}", ok)
 
     def exact_totals(self) -> ScenarioResult:
         base = self.create("bsv_exact", f"SELECT i AS id, CAST(0.10 AS DECIMAL(18, 2)) AS amount "

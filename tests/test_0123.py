@@ -41,7 +41,7 @@ def test_many_null_keys_do_not_multiply(backend):
     # 2,000 NULL keys on each side used to join into 4,000,000 pairs.
     assert (d.added_rows, d.removed_rows, d.changed_rows, d.unchanged_rows) == (0, 0, 0, 3000)
     assert d.null_keys_base == 2000 and d.is_identical
-    assert d.notes and "paired one to one" in d.notes[0]
+    assert d.notes and "Identical copies of a key were matched first" in d.notes[0]
 
 
 def test_a_new_copy_of_a_key_counts_as_added(backend):
@@ -221,6 +221,6 @@ def test_validation_battery_passes_on_duckdb(backend):
     assert by["hidden_in_sample"].passed and by["certified_totals_default"].actual.startswith("warn")
     lines = []
     print_results(results, out=lines.append)
-    assert lines[-1].startswith("8 passed, 0 failed, 2 skipped")
+    assert lines[-1].startswith("9 passed, 0 failed, 2 skipped")
     left = backend.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'bsv_test'")
     assert left == []  # everything it made is dropped

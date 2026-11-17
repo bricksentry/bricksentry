@@ -212,9 +212,20 @@ class Sentry:
         schema = ".".join(clone.split(".")[:-1])
         if schema:
             self.backend.ensure_schema(schema)
-        self.backend.clone(target, clone)
         try:
-            self.backend.execute(rewritten)
+            self.backend.clone(target, clone)
+        except Exception as e:
+            raise RuntimeError(
+                f"Could not clone {target} to preview the write: {_first_line(e)}. Check the table name "
+                f"and that you can create tables in {schema or 'the sandbox schema'}."
+            ) from None
+        try:
+            try:
+                self.backend.execute(rewritten)
+            except Exception as e:
+                raise RuntimeError(
+                    f"The statement failed on the preview clone, so production was not touched: {_first_line(e)}"
+                ) from None
             diff = self.diff(target, clone, keys=keys, table=target)
             assessment = self.assess([target], diffs={target: diff})
         finally:
@@ -295,3 +306,10 @@ def changed_columns(diff: TableDiff | None) -> list[str]:
             out.append(c.column)
     out += list(diff.schema.removed) + list(diff.schema.type_changed)
     return list(dict.fromkeys(out))
+
+
+def _first_line(e: BaseException) -> str:
+    """The useful part of an engine error: its first line, trimmed."""
+    text = str(e).strip()
+    line = text.splitlines()[0] if text else type(e).__name__
+    return line if len(line) <= 300 else line[:297] + "..."

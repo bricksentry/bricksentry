@@ -102,6 +102,18 @@ def _measures(v: Any) -> list[str] | str | None:
     return [str(x) for x in v]
 
 
+def _load_policy_file(root: Path, name: str) -> dict[str, Any]:
+    path = root / name
+    if not path.exists():
+        from bricksentry.policy_templates import TEMPLATES
+
+        hint = ""
+        if name.strip().lower() in TEMPLATES:
+            hint = f" To use the built-in template, write `policy: builtin:{name.strip().lower()}`."
+        raise FileNotFoundError(f"Policy file {name!r} not found (looked for {path}).{hint}")
+    return yaml.safe_load(path.read_text()) or {}
+
+
 @dataclass
 class TableSpec:
     name: str
@@ -155,7 +167,7 @@ class Config:
 
                 policy = get_template(policy.split(":", 1)[1])
             else:
-                policy = yaml.safe_load((root / policy).read_text()) or {}
+                policy = _load_policy_file(root, policy)
         return cls(
             backend=data.get("backend") or {"type": "duckdb"},
             sandbox_schema=data.get("sandbox_schema", "bricksentry_sandbox"),

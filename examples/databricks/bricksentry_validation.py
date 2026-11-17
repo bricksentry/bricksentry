@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # Validate bricksentry on your own workspace
 # MAGIC
-# MAGIC **10 risky changes, about 2 minutes, nothing outside a scratch schema touched.** This notebook runs the same
+# MAGIC **11 risky changes, about 2 minutes, nothing outside a scratch schema touched.** This notebook runs the same
 # MAGIC validation battery we publish in [VALIDATION.md](https://github.com/bricksentry/bricksentry/blob/main/VALIDATION.md),
 # MAGIC so you can check the results yourself instead of taking our word for them.
 # MAGIC

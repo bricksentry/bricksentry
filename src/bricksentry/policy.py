@@ -42,6 +42,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import warnings
 from typing import Any
 
 from bricksentry.measures import is_measure
@@ -97,6 +98,24 @@ class ColumnContext:
         self.downstream = downstream or []
 
 
+def _verdict(value: Any, where: str) -> Verdict:
+    try:
+        return Verdict(str(value).strip().lower())
+    except ValueError:
+        valid = ", ".join(v.value for v in Verdict)
+        raise PolicyError(f"Policy {where}: {value!r} is not a verdict. Use one of: {valid}.") from None
+
+
+def _sum_move(c: Any) -> str:
+    if c.sum_moved_from_zero:
+        return f"sum({c.column}) {_num(c.base_sum or 0)} -> {_num(c.candidate_sum)}"
+    return f"sum({c.column}) {c.sum_change_pct:+.2f}%"
+
+
+def _num(v: Any) -> str:
+    return f"{v:,.2f}".rstrip("0").rstrip(".") if isinstance(v, float) else f"{v:,}"
+
+
 def _tag_label(want: Any) -> str:
     if isinstance(want, dict):
         return ", ".join(f"{k}={v}" for k, v in want.items())
@@ -110,14 +129,21 @@ class Policy:
         # traced to the exact policy that produced it.
         canonical = json.dumps(spec, sort_keys=True, default=str, separators=(",", ":"))
         self.sha256 = hashlib.sha256(canonical.encode()).hexdigest()
-        self.default = Verdict(spec.get("default", "pass"))
-        self.notify_on = Verdict(spec.get("notify_owners_on", "needs_human"))
+        if not isinstance(spec, dict):
+            raise PolicyError(f"A policy is a mapping with `rules:`; got {type(spec).__name__}.")
+        self.default = _verdict(spec.get("default", "pass"), "default")
+        self.notify_on = _verdict(spec.get("notify_owners_on", "needs_human"), "notify_owners_on")
         self.rules = spec.get("rules") or []
         for r in self.rules:
             unknown = set((r.get("when") or {}).keys()) - KNOWN_CONDITIONS
             if unknown:
                 raise PolicyError(f"Rule {r.get('name')!r} uses unknown condition(s): {sorted(unknown)}")
-            Verdict(r.get("then", "warn"))
+            _verdict(r.get("then", "warn"), f"rule {r.get('name')!r}: then")
+        if not self.rules and self.default == Verdict.PASS:
+            # Most likely an empty or mis-indented policy file. Allowed, but never silently.
+            warnings.warn(
+                "bricksentry policy has no rules, so every change passes (even a 99% row loss). "
+                "Use `policy: builtin:default` for the standard rules.", UserWarning, stacklevel=2)
 
     def evaluate(
         self,
@@ -135,7 +161,7 @@ class Policy:
             ok, reason = _match(r.get("when") or {}, table, diff, downstream, tags, diff_error, measures, lineage_error,
                                 columns or ColumnContext())
             if ok:
-                hits.append(RuleHit(rule=r.get("name", "unnamed"), verdict=Verdict(r.get("then", "warn")), table=table, reason=reason))
+                hits.append(RuleHit(rule=r.get("name", "unnamed"), verdict=_verdict(r.get("then", "warn"), "then"), table=table, reason=reason))
         verdict = Verdict.worst([self.default] + [h.verdict for h in hits])
         return verdict, hits
 
@@ -282,13 +308,14 @@ def _match(
             col = when.get("column")
             cols = [
                 c for c in diff.columns
-                if c.sum_change_pct is not None
+                if (c.sum_change_pct is not None or c.sum_moved_from_zero)
                 and (c.column == col if col is not None else is_measure(c.column, diff.keys, measures))
             ]
-            m = [c for c in cols if abs(c.sum_change_pct) > float(val)]
+            # A total that moves away from zero has no percentage, but it has moved.
+            m = [c for c in cols if c.sum_moved_from_zero or abs(c.sum_change_pct) > float(val)]
             if not m:
                 return False, ""
-            reasons.append(", ".join(f"sum({c.column}) {c.sum_change_pct:+.2f}%" for c in m[:3]))
+            reasons.append(", ".join(_sum_move(c) for c in m[:3]))
             continue
         if cond == "null_increase_gt":
             col = when.get("column")

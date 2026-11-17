@@ -49,12 +49,14 @@ def explain_diff(d: TableDiff, measures: list[str] | str | None = None) -> str:
 
     moved = [
         c for c in d.columns
-        if c.sum_change_pct is not None and abs(c.sum_change_pct) >= 0.01
+        if (c.sum_moved_from_zero or (c.sum_change_pct is not None and abs(c.sum_change_pct) >= 0.01))
         and is_measure(c.column, d.keys, measures)
     ]
-    moved.sort(key=lambda c: -abs(c.sum_change_pct or 0))
+    moved.sort(key=lambda c: (not c.sum_moved_from_zero, -abs(c.sum_change_pct or 0)))
     if moved:
-        s += ". Totals: " + ", ".join(f"sum({c.column}) {c.sum_change_pct:+.2f}%" for c in moved[:3])
+        from bricksentry.policy import _sum_move
+
+        s += ". Totals: " + ", ".join(_sum_move(c) for c in moved[:3])
 
     nulls = [
         c for c in d.columns

@@ -1,7 +1,7 @@
 # Validation
 
 What bricksentry has been tested against on real Databricks, release by release, with the numbers. It includes the
-results that weren't perfect and every bug the live tests found. The unit tests (240, run on every push) use DuckDB
+results that weren't perfect and every bug the live tests found. The unit tests (251, run on every push) use DuckDB
 and a mocked Databricks SDK; this page is about the live runs.
 
 **Run it yourself.** The [validation notebook](examples/databricks/bricksentry_validation.py) runs the same risky
@@ -55,7 +55,7 @@ with its default sizes in a fresh scratch schema. Total time: 111 s on a 2X-Smal
 | `hidden_in_sample`: 5 of 200,000 salaries ×5, outside a 5% sample | the checksum caught them and re-ran on all rows | 14.7 s |
 | `certified_totals_default`: double a certified table's totals | `warn` (the documented default) | 8.8 s |
 | `certified_totals_strict`: the same under `builtin:certified` | `block`* | 8.3 s |
-| `null_keys`: 2,000 NULL keys each side | 3,000 unchanged, paired one to one | 9.0 s |
+| `null_keys`: 2,000 NULL keys each side | 3,000 unchanged, nothing added or removed | 9.0 s |
 | `exact_totals`: 1,000,000 × 0.10 DECIMAL | exactly 100,000.0 on both sides | 10.0 s |
 | `landed_change`: a bad write committed to Delta, then `check-last-change` | `block` and the `RESTORE` | 20.2 s |
 | `typo_table`: `check-last-change` on a mistyped name | one line: "Table … not found" | 0.3 s |
@@ -72,9 +72,9 @@ was dropped. Also confirmed on the released 0.1.24 from PyPI: a mistyped table i
 
 | Test | Result |
 |---|---|
-| 2,000 NULL keys on each side of an unchanged table | unchanged 3,000, nothing added or removed, copies paired one to one; 4.6 s (before 0.1.23 the join produced 4,000,000 pairs) |
+| 2,000 NULL keys on each side of an unchanged table | unchanged 3,000, nothing added or removed; 4.6 s (before 0.1.23 the join produced 4,000,000 pairs) |
 | A second copy of 3 existing keys | 3 added, 3 duplicate keys, verdict `block` |
-| A changed copy of a duplicated key | 1 changed, 2 unchanged, nothing added or removed |
+| A changed copy of a duplicated key | 1 changed, 2 unchanged, nothing added or removed (but see the worst-case rounds below: with many copies and a few changes, the pairing over-reported until 0.1.26) |
 | 1,000,000 rows of 0.10 as `DECIMAL(18,2)` | totals exactly 100,000.0 on both sides; 5.4 s (summing as `DOUBLE` gives 100,000.00000022353) |
 | Audit trail | time, version, policy fingerprint and `triggered_by` in the JSON and the report; same policy gives the same fingerprint, a changed rule a different one |
 | `check-last-change` after a duplicating MERGE | `block`, "3 rows added", the `RESTORE`, and the newer-changes warning after a later write |
@@ -131,6 +131,11 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
+| Worst-case rounds of 0.1.25 | Copies of a duplicated key were paired by rank, so one changed copy shifted the rest: 50,000 rows sharing a NULL key with 2 real changes reported 36,563 changed. Over-reports, never hides | 0.1.26 |
+| Worst-case rounds of 0.1.25 | A column total going from 0 to 5 didn't fire `sum_change_pct_gt` (no percentage from zero) | 0.1.26 |
+| Worst-case rounds of 0.1.25 | A `DECIMAL(38)` total overflowing failed the whole diff | 0.1.26 |
+| Worst-case rounds of 0.1.25 | The rollback warning ignored newer non-data changes (RENAME COLUMN, SET TBLPROPERTIES) that a `RESTORE` also undoes | 0.1.26 |
+| Worst-case rounds of 0.1.25 | A verdict typo gave a bare `ValueError`; `policy: strict` was read as a file path; an empty policy silently passed everything; `preview_write` showed the engine's full error | 0.1.26 |
 | This battery, Nov 16 | A sampled diff skipped the full-table check when the schema had also changed, so changed values in a retyped column outside the sample could go uncounted (the verdict still flagged the type change) | 0.1.25 |
 | User-path test of 0.1.23 | A mistyped table name printed the engine's full error, including an unrelated hint about dropping views | 0.1.24 |
 | Real job run of 0.1.23 | The job task log ended with IPython's "To exit: use 'exit'…" line | 0.1.24 |

@@ -141,20 +141,47 @@ def _diff(
     notes: list[str] = []
     pair_copies = bool(dup_b or dup_c)
     if pair_copies:
-        # Number the copies of each key and match copy n to copy n, so the join stays
-        # one to one: an extra copy counts as added (or removed), not as a second match.
-        # Ordering by a row hash pairs identical copies with each other.
-        order = backend.row_hash([c for c in b_cols if c in c_cols and c not in schema.type_changed]) or kc
-
-        def side(tbl: str, alias: str) -> str:
-            return (f"{alias} AS (SELECT *, 1 AS {present}, ROW_NUMBER() OVER (PARTITION BY {kc} "
-                    f"ORDER BY {order}) AS {occ} FROM {backend.qualified(tbl)}{sample_where()})")
-
-        ctes = f"WITH {side(base, 'b_src')}, {side(candidate, 'c_src')}"
         notes.append(
-            "Some keys appear more than once, so copies of the same key were paired one to one "
-            "(an extra copy counts as added or removed, not as another match)."
+            "Some keys appear more than once. Identical copies of a key were matched first, then the "
+            "remaining copies paired one to one (an extra copy counts as added or removed)."
         )
+        st = backend.string_type
+        hcols = [c for c in b_cols if c in c_cols and c not in schema.type_changed]
+        h = backend.row_hash(hcols) if hcols else None
+        if h is None:  # no row hash: number the copies of each key in no particular order
+            def side(tbl: str, alias: str) -> str:
+                return (f"{alias} AS (SELECT *, 1 AS {present}, CAST(ROW_NUMBER() OVER (PARTITION BY {kc} "
+                        f"ORDER BY {kc}) AS {st}) AS {occ} FROM {backend.qualified(tbl)}{sample_where()})")
+
+            ctes = f"WITH {side(base, 'b_src')}, {side(candidate, 'c_src')}"
+        else:
+            # Two steps, so one changed copy can't shift the pairing of the others:
+            # 1. identical copies match each other (same key, same row hash, numbered
+            #    within that hash);
+            # 2. only the copies left over on each side are paired, by rank within the key.
+            hh, hn, hm = q("__bs_h"), q("__bs_hn"), q("__bs_m")
+
+            def hashed(tbl: str, alias: str) -> str:
+                return (f"{alias} AS (SELECT *, 1 AS {present}, {h} AS {hh}, ROW_NUMBER() OVER "
+                        f"(PARTITION BY {kc}, {h} ORDER BY {kc}) AS {hn} FROM {backend.qualified(tbl)}{sample_where()})")
+
+            def marked(src: str, other: str, alias: str) -> str:
+                on = " AND ".join(f"o.{q(k)} IS NOT DISTINCT FROM s.{q(k)}" for k in keys)
+                return (f"{alias} AS (SELECT s.*, CASE WHEN o.{hh} IS NULL THEN 0 ELSE 1 END AS {hm} "
+                        f"FROM {src} s LEFT JOIN (SELECT {kc}, {hh}, {hn} FROM {other}) o "
+                        f"ON {on} AND o.{hh} = s.{hh} AND o.{hn} = s.{hn})")
+
+            def paired(src: str, alias: str) -> str:
+                return (f"{alias} AS (SELECT *, CASE WHEN {hm} = 1 "
+                        f"THEN CONCAT('m', CAST({hh} AS {st}), '_', CAST({hn} AS {st})) "
+                        f"ELSE CONCAT('u', CAST(ROW_NUMBER() OVER (PARTITION BY {kc}, {hm} ORDER BY {hh}) AS {st})) "
+                        f"END AS {occ} FROM {src})")
+
+            ctes = ("WITH " + ", ".join([
+                hashed(base, "b_h"), hashed(candidate, "c_h"),
+                marked("b_h", "c_h", "b_m"), marked("c_h", "b_h", "c_m"),
+                paired("b_m", "b_src"), paired("c_m", "c_src"),
+            ]))
     else:
         ctes = raw_ctes
     # Null-safe key match: a NULL key in production matches a NULL key in the candidate.
@@ -189,17 +216,38 @@ def _diff(
     j = backend.query(join_sql)[0]
 
     # Row counts, nulls, numeric sums per side. Sums are exact for decimals and integers.
-    def profile(tbl_cte: str, cols: dict[str, str]) -> dict:
+    def profile(tbl_cte: str, cols: dict[str, str], sums: str = "exact") -> dict:
         any_null_key = " OR ".join(f"{q(k)} IS NULL" for k in keys)
         parts = ["COUNT(*) AS n_rows", f"SUM(CASE WHEN {any_null_key} THEN 1 ELSE 0 END) AS null_keys"]
         for i, col in enumerate(common):
             parts.append(f"SUM(CASE WHEN {q(col)} IS NULL THEN 1 ELSE 0 END) AS nul_{i}")
             if backend.is_numeric(cols[col]):
-                parts.append(f"{backend.exact_sum(q(col), cols[col])} AS sum_{i}")
+                if sums == "exact":
+                    parts.append(f"{backend.exact_sum(q(col), cols[col])} AS sum_{i}")
+                elif sums == "double":
+                    parts.append(f"SUM(CAST({q(col)} AS DOUBLE)) AS sum_{i}")
         return backend.query(f"{raw_ctes} SELECT {', '.join(parts)} FROM {tbl_cte}")[0]
 
-    pb = profile("b_src", b_cols)
-    pc = profile("c_src", c_cols)
+    def safe_profile(tbl_cte: str, cols: dict[str, str]) -> dict:
+        # An exact DECIMAL(38) total can overflow on huge values. Don't lose the whole
+        # diff over it: fall back to approximate totals, then to no totals.
+        try:
+            return profile(tbl_cte, cols)
+        except Exception as e:
+            first = str(e).strip().splitlines()[0][:200] if str(e).strip() else type(e).__name__
+            try:
+                r = profile(tbl_cte, cols, "double")
+                msg = ("Exact totals overflowed, so column totals are approximate (added as DOUBLE). "
+                       f"Engine said: {first}")
+            except Exception:
+                r = profile(tbl_cte, cols, "none")
+                msg = f"Column totals could not be computed, so total-based rules can't fire. Engine said: {first}"
+            if msg not in notes:
+                notes.append(msg)
+            return r
+
+    pb = safe_profile("b_src", b_cols)
+    pc = safe_profile("c_src", c_cols)
 
     col_changes: list[ColumnChange] = []
     for i, col in enumerate(common):
