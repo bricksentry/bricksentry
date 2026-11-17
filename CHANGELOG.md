@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.27 (2026-11-17)
 
-A safety release. A live round of leak, data-shape and race tests on 0.1.26 found four problems; two could mislead.
+A safety release. A live round of leak, data-shape and race tests on 0.1.26 found four problems; two could mislead. A verification round re-ran every original attack on the fixes: no production value reached an agent, mid-diff rewrites returned the pinned state 3 of 3 times, MAP diffs and the key-order trap were exact, and the 14-scenario battery passed 14 of 14. Pinning makes a diff slower (a 1M-row diff took about 10 s instead of 5 s); that will be reduced in a later release.
 
 - **Agents never get production values.** `preview_write` returned up to 5 before→after values per changed column, so an agent with no access to a table could "update" chosen rows and read their old values (SSNs, salaries) back, because bricksentry does the reading. Every agent tool (MCP and `bricksentry.agent_tools`) now returns counts, columns, schema, null counts, percentages and verdicts, never values: no example values on either side (an agent can copy a value into the "new" side), no absolute totals (a total over one row is the value; percentages are rounded to one decimal), no segment values, and quoted values are removed from engine errors. Humans keep the detail in the CLI, Python API and reports, except values in `pii`-tagged tables and columns, which reports never show. Rule reasons no longer contain totals ("sum(amount) moved from 0").
 - **`agent_tables`** in bricksentry.yml lists the tables agents may assess or preview (globs, any case); others are refused. Counts alone can still be probed (`DELETE ... WHERE ssn LIKE '1%'`), which only limiting tables can stop. Every agent `assess_change` / `preview_write` is logged to `bricksentry.audit` and `audit.jsonl` in the assessment store. The README has a table of what each tool can reveal.

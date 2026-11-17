@@ -33,6 +33,19 @@ Please share what you see, especially from other clouds, classic compute and big
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
 
+## Fix verification of 0.1.27 (November 17, 2026): every round 7 finding fixed
+
+Round 7 (on 0.1.26) attacked read isolation, hostile data shapes and races, and found four problems. Genie re-ran each original attack on the fix commit:
+
+| Finding | Original attack | Result on 0.1.27 |
+|---|---|---|
+| Agents could read production values through `preview_write` | "update" chosen rows' SSNs and read the old values back | no sentinel value in any agent output; example values gone from agent results; a 1-row table's totals not returned; values masked in engine errors; the human report still shows examples |
+| Diff reads not pinned to one version | replace the candidate (5 changed → 50 changed) mid-diff; 0.1.26 reported 49 | 3 of 3 runs returned the pinned state (changed = 5), with a note and `needs_human` |
+| One MAP column failed the whole diff | a table with a MAP column | MAP diffs exact (changed = 3); equal maps in a different key order: 0 changes; identical tables pass |
+| Float rounding showed every row changed | `0.1 + 0.2` vs `0.3` | exact by default, with a rounding note; with `float_tolerance: 1e-9`: 0 changed, NaN and real changes still caught, DECIMAL exact |
+
+Also verified: a table outside `agent_tables` is refused for agents; the battery, now 14 scenarios including `agent_sees_no_values` and `map_column`, passed 14 of 14. Pinning costs time: 300k rows 5.5 → 10.7 s, a 1M-row composite-key diff 5.3 → 10.3 s, the battery 151 → 232 s.
+
 ## Pre-release check of 0.1.26 (November 17, 2026): 47 of 47 passed
 
 Run by Genie on two Databricks Free Edition workspaces (a fresh one and the one used for earlier rounds, serverless SQL warehouses), on the release commit installed from GitHub. Both said ship; the second ran the battery in 154 s and the 1M-row diff in 5.3 s, and checked the earlier rounds' numbers directly. It re-ran the cases from two worst-case rounds on 0.1.25 that had found five problems.
