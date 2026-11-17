@@ -31,6 +31,16 @@ Please share what you see, especially from other clouds, classic compute and big
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
 
+## Release test of 0.1.25 (November 16, 2026): passed, with the fix reproduced A/B
+
+| Check | Result |
+|---|---|
+| The shipped test suite, from the source distribution | 239 passed, 1 skipped |
+| **The sampling fix, before and after.** Same 2,000-row tables, one column retyped (`INT` → `BIGINT`), 1,895 changed rows placed deliberately outside a 5% sample | **0.1.24: 0 changed rows, no note** (all 1,895 changes missed). **0.1.25: 1,895 changed**, with "The 5% sample showed no row changes … re-run on all rows" |
+| The validation battery, installed from PyPI | 10 of 10 passed in 113 s, including `landed_change` and `typo_table` on real Delta history |
+| The certified scenarios | the strict verdict now comes from `certified-table-changed` alone, and the default one no longer fires `type-change`, as the changelog says |
+| VALIDATION.md and the validation report form | both live on GitHub |
+
 ## The validation battery on Databricks (November 16, 2026): 10 of 10 passed
 
 The battery published in this repo (`bricksentry.validation`, the
