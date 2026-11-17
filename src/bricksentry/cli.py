@@ -395,7 +395,7 @@ def policies(name):
 def test_alert(verdict, owner, config_path):
     """Send a clearly labelled sample alert to your Slack / Teams webhooks.
 
-    Reads no tables. Exits 1 if a webhook failed or none is configured."""
+    Reads no tables. Exits 1 if a webhook failed or was skipped, 2 if none is configured."""
     from bricksentry.notify import NotifySettings, sample_assessment, send
 
     cfg = _config(config_path)

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `bricksentry test-alert --help` said it exits 1 when no webhook is configured; it exits 2 (configuration error), which the help now says. Found in the live test of 0.1.23.
+- README: "Validated on" covers the live run of 0.1.23.
+
 ## 0.1.23 (2026-11-16)
 
 From a review of accuracy, auditability and documentation:
