@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+Security fixes from live-test round 9 on 0.1.27 (MERGE, allowlist bypasses, metadata injection, remote access, governance features). Agents still never received production values; these close the remaining ways to learn about tables they shouldn't.
+
+- **`agent_tables` covers every table an agent touches.** It only checked the target, so an agent could read a forbidden table inside an allowed write (subquery, join, CTE, `MERGE ... USING`, `INSERT ... SELECT`) or name it as the candidate in `assess_change`, and learn its row counts. Statements are now parsed with a real SQL parser (sqlglot, a new dependency) and every table they read must be listed; agent-named candidates too; `explain_diff` and `safe_to_ship` refuse assessments of unlisted tables. What can't be checked by name is refused: table functions (`table_changes`, `read_files`), `IDENTIFIER(...)`, path-based tables, and SQL that doesn't parse.
+- **Column masks and row filters can't pass silently.** A masked column with 50 real changes diffed as unchanged. bricksentry now reads masks and row filters from Unity Catalog: masked columns aren't compared (`columns-not-compared`) and a row filter on either table gets `needs_human` (`row-filter`).
+- **Behavior change: the MCP server needs a token on the network.** Over HTTP on anything but localhost it had no authentication, so anyone who could reach the port could call the tools. It now refuses to start there unless `BRICKSENTRY_MCP_TOKEN` is set (clients send `Authorization: Bearer <token>`) or `--insecure-no-auth` is passed for a network behind your own authenticating proxy. Databricks Apps needs no token (its sign-in is in front). Localhost gets DNS-rebinding protection again; `BRICKSENTRY_ALLOWED_HOSTS` lists extra host names.
+- **Free text in tags and owners no longer reaches agents.** Tag values such as "IGNORE ALL PREVIOUS INSTRUCTIONS…" were passed to agents verbatim. Short, plain names and values (`pii`, `true`, `finance-team`) still are; longer or free text shows as `[text hidden: N chars]`, also where it was copied into summaries. Verdicts were never affected.
+- `assess --from-git` gives one clear line (exit 2) when git fails or isn't installed, instead of a traceback.
+- Quoted-value redaction in agent errors no longer eats apostrophes in words ("can't") and catches values that contain one ('O'Brien').
+- New validation scenario `agent_allowlist` (the battery is now 15).
+
 ## 0.1.27 (2026-11-17)
 
 A safety release. A live round of leak, data-shape and race tests on 0.1.26 found four problems; two could mislead. A verification round re-ran every original attack on the fixes: no production value reached an agent, mid-diff rewrites returned the pinned state 3 of 3 times, MAP diffs and the key-order trap were exact, and the 14-scenario battery passed 14 of 14. Pinning makes a diff slower (a 1M-row diff took about 10 s instead of 5 s); that will be reduced in a later release.

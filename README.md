@@ -132,7 +132,7 @@ claude mcp add bricksentry -- uvx bricksentry-mcp --config /full/path/to/brickse
 
 The JSON works for the Claude desktop app, Cursor and other MCP clients. Use a **full path** to `bricksentry.yml`, because clients start the server from their own working folder. If an app can't find `uvx`, use its full path (`which uvx`). To share the setup through a repo, `claude mcp add -s project ...` writes it to `.mcp.json`; a relative path then works when Claude Code starts from the repo root. No config yet? `uvx --from bricksentry bricksentry init` writes a starter one.
 
-Already installed bricksentry with pip? `pip install "bricksentry[mcp,databricks]"` and run `bricksentry mcp --config /full/path/to/bricksentry.yml` instead. Add `--transport streamable-http` for remote agents.
+Already installed bricksentry with pip? `pip install "bricksentry[mcp,databricks]"` and run `bricksentry mcp --config /full/path/to/bricksentry.yml` instead. Add `--transport streamable-http` for remote agents. Over HTTP the server listens on 127.0.0.1; to listen on any other address, set `BRICKSENTRY_MCP_TOKEN` and have clients send `Authorization: Bearer <token>` (it refuses to start otherwise). Databricks Apps needs no token, because its sign-in is in front.
 
 bricksentry is listed in the [official MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.bricksentry/bricksentry) as `io.github.bricksentry/bricksentry`.
 
@@ -165,13 +165,15 @@ bricksentry usually runs with more read access than the agent that calls it, so 
 
 The new value is hidden too, because an agent can write `SET note = ssn` and read its own "new" value. Humans keep the detail: the CLI, the Python API and the pull-request report show example values, except in tables or columns tagged `pii`, whose values a report never shows.
 
-**Counts can still leak information.** An agent could preview `DELETE ... WHERE ssn LIKE '1%'` and read the number of removed rows, then narrow it down. No masking stops that, so list the tables agents may assess or preview:
+**Counts can still leak information.** An agent could preview `DELETE ... WHERE ssn LIKE '1%'` and read the number of removed rows, then narrow it down. No masking stops that, so list the tables agents may use:
 
 ```yaml
 agent_tables: ["main.sales_dev.*", "main.sales.orders"]   # globs, any case; others are refused
 ```
 
-Without `agent_tables`, agents can check any table bricksentry can read. Run the MCP server under an identity that can read only what the agent should. Every agent `assess_change` and `preview_write`, refused or not, is logged to `bricksentry.audit` and to `audit.jsonl` in the assessment store (time, actor, tables, verdict, row counts), so a run of small probing previews is visible.
+The list covers every table an agent touches: the target, every table its statement reads (subqueries, joins, CTEs, `MERGE ... USING`), and any candidate it names. Statements that can't be checked by name are refused: table functions such as `table_changes()` or `read_files()`, `IDENTIFIER(...)`, path-based tables and SQL that doesn't parse. Write full names (`main.sales.orders`) when your patterns have three parts. Without `agent_tables`, agents can check any table bricksentry can read.
+
+**Metadata is data, not instructions.** Tag names and values and owners reach agents only when short and plain (`pii`, `true`, `finance-team`); longer or free text, which anyone who can tag a table could write, shows as `[text hidden: N chars]`. Policies still see the full tags. Run the MCP server under an identity that can read only what the agent should. Every agent `assess_change` and `preview_write`, refused or not, is logged to `bricksentry.audit` and to `audit.jsonl` in the assessment store (time, actor, tables, verdict, row counts), so a run of small probing previews is visible.
 
 The same tools are plain Python functions in `bricksentry.agent_tools`, so you can use them from LangGraph, the OpenAI Agents SDK or the Databricks Agent Framework without MCP.
 
@@ -349,6 +351,8 @@ lineage:
 
 Typos are caught: an unknown key such as `sample_pc` prints a warning that names the right one (`did you mean 'sample_pct'?`) instead of being silently ignored.
 
+**Column masks and row filters.** If a table in the diff has a Unity Catalog column mask, that column isn't compared (bricksentry's identity may see masked values, which hide changes); with a row filter, the diff may not see every row. Either way the check asks a human (`columns-not-compared`, `row-filter`).
+
 **Consistent reads.** Every diff reads both tables at the Delta version they had when it started (`VERSION AS OF`), so a job writing to them mid-check can't mix two states into one result. If the candidate gets a new version during the check, the result says so and asks a human to re-run. Views and other objects without time travel are read as they are, with a before-and-after version check.
 
 **Floats.** FLOAT and DOUBLE are compared exactly by default, so `0.1 + 0.2` and `0.3` differ. If a column changes everywhere but its total stays the same, the diff says it's likely rounding. Set `float_tolerance` to compare within a relative tolerance; NaN, infinity and NULL still compare exactly, and DECIMAL is always exact. MAP columns are compared by their entries sorted by key, so a map written in a different order isn't a change. A column the engine can't compare at all is left out with a note, and the check asks a human.
@@ -442,7 +446,7 @@ Every assessment records when it ran (UTC), the bricksentry version, a SHA-256 f
 - **Lineage is recorded at runtime.** Brand-new tables have no downstream history yet. Unity Catalog doesn't capture RDD operations, and UDFs hide column-level mapping; column lineage records source-to-target derivations, so a column used only in a filter or join may not appear.
 - **Keys are required.** Tables without a stable key can't be diffed row by row yet (an aggregate-profile mode is planned).
 - **Changed-table detection uses path globs** from config. It doesn't parse Asset Bundles yet.
-- **Validated on Databricks** (serverless, November 2026): a 2-million-row table with 0.1.4 (lineage, rollback plans, previews on shallow clones, every verdict level, the sampling guard catching a single changed row), then live runs of every release up to 0.1.27 on a Free Edition workspace with an HR pipeline: pull-request gating with comment updates, the bundle demo job, `check-last-change` and the newer-changes warning in the CLI, report, JSON and Slack, the refused-statement guards, outbound-URL checks, one-to-one matching of 2,000 NULL keys, exact totals over a million decimal rows, the audit trail, an AI agent attempting six risky changes on the live pipeline, the job task blocking a bad MERGE inside a real Databricks job, and worst-case rounds (50,000 NULL keys, near-max decimals, exotic types, 200-column tables) whose five findings were fixed in 0.1.26, and a round of leak, data-shape and race tests whose four findings were fixed in 0.1.27. Every run, with its numbers and the bugs it found, is in [VALIDATION.md](VALIDATION.md). The automated tests use DuckDB and a mocked SDK, so please run the [validation notebook](examples/databricks/bricksentry_validation.py) on your workspace and [share a validation report](https://github.com/bricksentry/bricksentry/issues/new?template=validation_report.yml), whether it passes or not.
+- **Validated on Databricks** (serverless, November 2026): a 2-million-row table with 0.1.4 (lineage, rollback plans, previews on shallow clones, every verdict level, the sampling guard catching a single changed row), then live runs of every release up to 0.1.28 on a Free Edition workspace with an HR pipeline: pull-request gating with comment updates, the bundle demo job, `check-last-change` and the newer-changes warning in the CLI, report, JSON and Slack, the refused-statement guards, outbound-URL checks, one-to-one matching of 2,000 NULL keys, exact totals over a million decimal rows, the audit trail, an AI agent attempting six risky changes on the live pipeline, the job task blocking a bad MERGE inside a real Databricks job, and worst-case rounds (50,000 NULL keys, near-max decimals, exotic types, 200-column tables) whose five findings were fixed in 0.1.26, a round of leak, data-shape and race tests whose four findings were fixed in 0.1.27, and a round on MERGE, allowlist bypasses, metadata injection, remote access and governance features whose findings were fixed in 0.1.28. Every run, with its numbers and the bugs it found, is in [VALIDATION.md](VALIDATION.md). The automated tests use DuckDB and a mocked SDK, so please run the [validation notebook](examples/databricks/bricksentry_validation.py) on your workspace and [share a validation report](https://github.com/bricksentry/bricksentry/issues/new?template=validation_report.yml), whether it passes or not.
 
 ## Roadmap
 

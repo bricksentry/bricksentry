@@ -91,7 +91,7 @@ def test_agent_tables_allowlist_refuses_and_audits(backend, tmp_path):
         lines = [json.loads(x) for x in (s.config.store_dir() / "audit.jsonl").read_text().splitlines()]
         assert [(x["tool"], x["tables"], bool(x["refused"])) for x in lines] == [
             ("preview_write", ["hr.emp"], True), ("preview_write", ["hr.one"], False),
-            ("assess_change", ["hr.emp"], True)]
+            ("assess_change", ["hr.emp", "hr.one"], True)]
         assert lines[1]["rows"]["hr.one"]["changed_rows"] == 1
     finally:
         agent_tools.set_sentry(None)

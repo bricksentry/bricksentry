@@ -51,9 +51,21 @@ def diff_tables(
     # result. Tables without versions (views, DuckDB) are read as they are.
     seen = {base: backend.current_version(base), candidate: backend.current_version(candidate)}
     pins = {t: (v if v is not None and _can_time_travel(backend, t, v) else None) for t, v in seen.items()}
+    # Column masks and row filters (Unity Catalog) change what bricksentry's identity
+    # reads: a masked column can look unchanged while every value changed, and a row
+    # filter hides rows from the counts. Neither can be verified, so both are reported.
+    prot = backend.protections([base, candidate])
+    masked = {c: "masked" for p in prot.values() for c in p.get("masked", [])}
+    filtered = [role for role, t in (("base", base), ("candidate", candidate)) if prot.get(t, {}).get("row_filter")]
     d = _diff(backend, base, candidate, keys, table=table, sample_pct=sample_pct,
               segment_by=segment_by, max_samples=max_samples, columns=columns, pins=pins,
-              float_tolerance=float_tolerance)
+              float_tolerance=float_tolerance, masked=masked)
+    if filtered:
+        d.row_filtered = filtered
+        d.notes.append(
+            f"A row filter is set on the {' and '.join(filtered)} table: the diff only sees the rows bricksentry's "
+            "identity is allowed to read, so counts may be incomplete. The check asks a human."
+        )
     d = _finish(backend, d, base, candidate, keys, pins, table=table, sample_pct=sample_pct,
                 segment_by=segment_by, max_samples=max_samples, columns=columns, sample_guard=sample_guard,
                 float_tolerance=float_tolerance)
@@ -72,7 +84,7 @@ def _can_time_travel(backend: Backend, table: str, version: int) -> bool:
 
 
 def _finish(backend, d, base, candidate, keys, pins, *, table, sample_pct, segment_by, max_samples, columns,
-            sample_guard, float_tolerance):
+            sample_guard, float_tolerance, masked=None):
     # Re-check the whole table whenever the sample shows no row changes, even if the
     # schema changed: a retyped column can still hide changed values outside the sample.
     rows_look_unchanged = d.added_rows == 0 and d.removed_rows == 0 and d.changed_rows == 0
@@ -87,7 +99,7 @@ def _finish(backend, d, base, candidate, keys, pins, *, table, sample_pct, segme
         return d
     full_d = _diff(backend, base, candidate, keys, table=table, sample_pct=None,
                    segment_by=segment_by, max_samples=max_samples, columns=columns, pins=pins,
-                   float_tolerance=float_tolerance)
+                   float_tolerance=float_tolerance, masked=masked)
     full_d.sample_note = (
         f"The {sample_pct:g}% sample showed no row changes, but the full tables differ, "
         "so the diff was re-run on all rows."
@@ -145,6 +157,7 @@ def _diff(
     columns: list[str] | None,
     pins: dict | None = None,
     float_tolerance: float | None = None,
+    masked: dict[str, str] | None = None,
 ) -> TableDiff:
     if not keys:
         raise DiffError(
@@ -194,7 +207,9 @@ def _diff(
     # Columns the engine can't compare (a type it rejects even after canon()) are left
     # out with a note instead of failing the whole diff. Only nested types are probed,
     # and only at plan time (LIMIT 0), so ordinary tables pay nothing.
-    not_compared: dict[str, str] = {}
+    masked_lc = {c.lower() for c in (masked or {})}
+    not_compared: dict[str, str] = {c: "masked" for c in common if c.lower() in masked_lc}
+    common = [c for c in common if c not in not_compared]
     complex_cols = [c for c in common if _is_complex(b_cols[c]) or _is_complex(c_cols[c])]
     if complex_cols:
         on_keys = " AND ".join(f"b.{q(k)} IS NOT DISTINCT FROM c.{q(k)}" for k in keys)
@@ -363,9 +378,14 @@ def _diff(
         )
         col_changes.append(cc)
 
-    if not_compared:
+    masked_cols = [c for c, t in not_compared.items() if t == "masked"]
+    other = {c: t for c, t in not_compared.items() if t != "masked"}
+    if masked_cols:
+        notes.append(f"Not compared (column mask): {', '.join(masked_cols)}. A mask can hide real changes from "
+                     "bricksentry's identity, so the check asks a human.")
+    if other:
         notes.append("Not compared (the engine can't compare these types): "
-                     + ", ".join(f"{c} ({t})" for c, t in not_compared.items())
+                     + ", ".join(f"{c} ({t})" for c, t in other.items())
                      + ". Changes in these columns can't be seen, so the check asks a human.")
     if not float_tolerance:
         noisy = [cc.column for cc in col_changes if cc.changed_rows and _is_float(b_cols.get(cc.column, ""))

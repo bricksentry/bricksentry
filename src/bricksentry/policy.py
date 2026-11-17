@@ -174,6 +174,10 @@ class Policy:
                 reason=("a table changed while it was being checked and couldn't be pinned to one version; re-run"
                         if "unpinned" in moved else
                         "the candidate table got a new version while it was being checked; re-run")))
+        if diff is not None and diff.row_filtered:
+            hits.append(RuleHit(rule="row-filter", verdict=Verdict.NEEDS_HUMAN, table=table,
+                                reason="a row filter hides rows from the diff ("
+                                + " and ".join(diff.row_filtered) + "); counts can't be verified"))
         if diff is not None and diff.not_compared:
             hits.append(RuleHit(rule="columns-not-compared", verdict=Verdict.NEEDS_HUMAN, table=table,
                                 reason="couldn't compare " + ", ".join(diff.not_compared)

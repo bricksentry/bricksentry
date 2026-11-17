@@ -100,7 +100,8 @@ class TableDiff:
     notes: list[str] = field(default_factory=list)
     pinned_versions: dict[str, int | None] | None = None  # Delta versions every query read
     moved_during_check: list[str] = field(default_factory=list)  # "base" / "candidate"
-    not_compared: dict[str, str] = field(default_factory=dict)  # column -> type the engine couldn't compare
+    not_compared: dict[str, str] = field(default_factory=dict)  # column -> type the engine couldn't compare, or "masked"
+    row_filtered: list[str] = field(default_factory=list)  # "base" / "candidate" tables with a row filter
 
     def _pct(self, n: int) -> float:
         denom = max(self.base_rows, 1)
@@ -133,6 +134,7 @@ class TableDiff:
             and self.base_rows == self.candidate_rows
             and self.duplicate_keys_candidate <= self.duplicate_keys_base
             and not self.not_compared
+            and not self.row_filtered
         )
 
     def to_dict(self) -> dict[str, Any]:

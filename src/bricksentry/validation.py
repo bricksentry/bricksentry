@@ -158,7 +158,7 @@ class _Validation:
         out = []
         for fn in (self.row_loss, self.bad_merge, self.everything_wrong, self.hidden_in_sample,
                    self.certified_totals_default, self.certified_totals_strict, self.null_keys,
-                   self.null_keys_changed, self.pii_noop, self.agent_sees_no_values, self.map_column,
+                   self.null_keys_changed, self.pii_noop, self.agent_sees_no_values, self.agent_allowlist, self.map_column,
                    self.exact_totals, self.landed_change, self.typo_table):
             t0 = time.time()
             try:
@@ -303,6 +303,31 @@ class _Validation:
                               "an agent previews an UPDATE of 3 rows to read their emails and salaries back",
                               "changed=3 reported; no email or salary value in anything the agent gets",
                               f"changed={changed}, leaked={leaked or 'none'}" + (f", error={out['error']}" if "error" in out else ""),
+                              ok)
+
+    def agent_allowlist(self) -> ScenarioResult:
+        """With agent_tables listing only the employee table, an agent tries to learn about
+        another table by reading it inside an allowed write, or by passing it as the candidate."""
+        from bricksentry import agent_tools
+
+        before, allowed = agent_tools._SENTRY, self.sentry.config.agent_tables
+        self.sentry.config.agent_tables = [self.emp]
+        agent_tools.set_sentry(self.sentry)
+        try:
+            sub = agent_tools.preview_write(
+                f"UPDATE {{{{target}}}} SET department = (SELECT MAX(department) FROM {self.mart})", self.emp)
+            cand = agent_tools.assess_change([self.emp], candidates={self.emp: self.mart})
+            ok_run = agent_tools.preview_write("UPDATE {{target}} SET department = 'x' WHERE emp_id = 1", self.emp)
+        finally:
+            self.sentry.config.agent_tables = allowed
+            agent_tools.set_sentry(before)
+        refused = [str(r.get("error", "")).startswith("PermissionError") for r in (sub, cand)]
+        changed = ((ok_run.get("tables") or [{}])[0].get("diff") or {}).get("changed_rows")
+        ok = all(refused) and changed == 1
+        return ScenarioResult("agent_allowlist",
+                              "agent_tables lists one table; an agent reads another in a subquery, then as a candidate",
+                              "both refused; an ordinary preview of the listed table still works (changed=1)",
+                              f"subquery refused={refused[0]}, candidate refused={refused[1]}, listed table changed={changed}",
                               ok)
 
     def map_column(self) -> ScenarioResult:

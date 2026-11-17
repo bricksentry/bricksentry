@@ -126,11 +126,12 @@ def explain_columns(cols, note: str | None = None) -> str:
     return (" " + ". ".join(parts) + ".") if parts else ""
 
 
-_QUOTED = re.compile(r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"")
+_QUOTED = re.compile(r"(?<![A-Za-z])'.*?'(?![A-Za-z])|(?<![A-Za-z])\".*?\"(?![A-Za-z])")
 
 
 def redact_values(text: str) -> str:
     """Hide quoted literals in engine text, e.g. ``The value '123-45-6789' cannot be cast``
     or DuckDB's ``Casting value "1975308.64"``: engines quote data values in single or
-    double quotes. Backticked names stay. Some type names in double quotes go too."""
+    double quotes. Backticked names stay. Some type names in double quotes go too.
+    Apostrophes inside words ("can't") aren't quotes and stay."""
     return _QUOTED.sub("'…'", text)

@@ -13,14 +13,27 @@ import subprocess
 from bricksentry.config import Config
 
 
+class GitError(RuntimeError):
+    pass
+
+
 def changed_files(base_ref: str = "origin/main", cwd: str | None = None) -> list[str]:
-    out = subprocess.run(
-        ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
-        capture_output=True,
-        text=True,
-        cwd=cwd,
-        check=True,
-    ).stdout
+    try:
+        out = subprocess.run(
+            ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            check=True,
+        ).stdout
+    except FileNotFoundError:
+        raise GitError("--from-git needs git, which isn't installed here. List the tables instead.") from None
+    except subprocess.CalledProcessError as e:
+        why = (e.stderr or "").strip().splitlines()
+        raise GitError(
+            f"git diff {base_ref}...HEAD failed: {why[0] if why else 'exit ' + str(e.returncode)}. Run it inside the "
+            f"repository, and fetch {base_ref} first (in CI: actions/checkout with fetch-depth: 0)."
+        ) from None
     return [line.strip() for line in out.splitlines() if line.strip()]
 
 

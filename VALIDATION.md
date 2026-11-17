@@ -1,7 +1,7 @@
 # Validation
 
 What bricksentry has been tested against on real Databricks, release by release, with the numbers. It includes the
-results that weren't perfect and every bug the live tests found. The unit tests (271, run on every push) use DuckDB
+results that weren't perfect and every bug the live tests found. The unit tests (294, run on every push) use DuckDB
 and a mocked Databricks SDK; this page is about the live runs.
 
 **Run it yourself.** The [validation notebook](examples/databricks/bricksentry_validation.py) runs the same risky
@@ -32,6 +32,19 @@ Please share what you see, especially from other clouds, classic compute and big
   scratch schema; the scratch schema is dropped at the end, and the run confirms that the production tables kept their
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
+
+## Round 9 on 0.1.27 (November 17, 2026): basics to governance
+
+Run by Genie on Databricks Free Edition (serverless), from the published 0.1.27. Ten batteries, from the README's own commands to governance features. Five findings, all fixed in 0.1.28 (see the table below). What passed:
+
+| Area | Result |
+|---|---|
+| README commands run as written | `init`, `policies`, `demo`, `diff`, the README's MERGE preview, `check-last-change`, `test-alert` and `rollback` all worked verbatim; the bundle template is consistent (installing it from the remote URL was blocked by the workspace's own safety mode) |
+| Everyday pull-request cases | new table and dropped table → `needs_human`; renamed table diffs correctly; no table changes → correct; all under the default policy |
+| Upgrading | a 0.1.15 config, policy and saved assessments load and run on 0.1.27 (14 rules; `explain_diff` and `safe_to_ship` work on the old record) |
+| MERGE in `preview_write` | 10 of 10 exact: every MERGE branch, self-referencing, lowercase keywords, subquery UPDATE; multiple statements refused; DDL in comments inert; production untouched every run |
+| Hostile schemas and values | columns named like bricksentry's internals, reserved-word keys, schema drift (added, removed, retyped → `needs_human`), `now()`, DEFAULT columns, CHECK constraints (enforced on base and clone) |
+| Pinning and limits | a VACUUMed old version fails closed with a clear "removed by VACUUM" message; a base rewritten mid-diff (250,000 rows) stayed pinned and was flagged; an allowlisted view diffs correctly; 1,000 columns exact; **10 million rows exact (100,000 changed) in 22 s with pinning**; lineage depth 10 accepted |
 
 ## Fix verification of 0.1.27 (November 17, 2026): every round 7 finding fixed
 
@@ -163,6 +176,11 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
+| Round 9 on 0.1.27 | `agent_tables` checked only the target: a forbidden table read in a subquery, MERGE, INSERT ... SELECT, or named as the candidate, leaked its row counts to agents (values stayed hidden) | 0.1.28 |
+| Round 9 on 0.1.27 | A masked column with 50 real changes diffed as unchanged and passed | 0.1.28 |
+| Round 9 on 0.1.27 | The MCP server over HTTP had no authentication when bound beyond localhost | 0.1.28 |
+| Round 9 on 0.1.27 | Free text in tag values (an injected instruction) reached agents verbatim | 0.1.28 |
+| Round 9 on 0.1.27 | `assess --from-git` printed a traceback when git failed | 0.1.28 |
 | Round 7 (leaks, data shapes, races) on 0.1.26 | `preview_write` returned example values, so an agent without access could read production values by previewing an UPDATE of the rows it wanted | 0.1.27 |
 | Round 7 on 0.1.26 | Diff queries weren't pinned to one table version: a candidate replaced mid-diff gave changed=49 (old state 5, new 50) with no warning | 0.1.27 |
 | Round 7 on 0.1.26 | One MAP column failed the whole diff (Spark can't compare maps) | 0.1.27 |

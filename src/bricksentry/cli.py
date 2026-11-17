@@ -109,13 +109,18 @@ def impact(table, depth, fmt, config_path):
 @config_opt
 def assess(tables, git_base, cand_pairs, pr, fmt, output, comment, notify, fail_on, config_path):
     """Assess a change: data diff + blast radius + policy verdict + rollback plan."""
-    from bricksentry.changes import changed_files, tables_for_files
+    from bricksentry.changes import GitError, changed_files, tables_for_files
     from bricksentry.report import to_markdown
 
     s = _sentry(config_path)
     tables = list(tables)
     if git_base:
-        files = changed_files(git_base)
+        try:
+            files = changed_files(git_base)
+        except GitError as e:
+            err = click.ClickException(str(e))
+            err.exit_code = 2  # a setup problem, like other config errors
+            raise err from None
         found = tables_for_files(s.config, files)
         click.echo(f"{len(files)} changed file(s) -> {len(found)} table(s): {', '.join(found) or 'none'}", err=True)
         tables += [t for t in found if t not in tables]
@@ -284,15 +289,26 @@ def rollback(table, config_path):
 @click.option("--read-only", is_flag=True, default=False,
               help="Leave out preview_write, so the server never writes, not even to a sandbox clone. "
                    "Env: BRICKSENTRY_READ_ONLY=1")
+@click.option("--insecure-no-auth", is_flag=True, default=False,
+              help="HTTP only. Serve on a non-localhost address without BRICKSENTRY_MCP_TOKEN. Only behind a "
+                   "proxy you control that authenticates every request.")
 @config_opt
-def mcp(transport, host, port, read_only, config_path):
-    """Start the MCP server for AI agents."""
+def mcp(transport, host, port, read_only, insecure_no_auth, config_path):
+    """Start the MCP server for AI agents.
+
+    Over HTTP on anything but localhost, set BRICKSENTRY_MCP_TOKEN: clients must send
+    `Authorization: Bearer <token>`. Databricks Apps needs no token (its sign-in is in front)."""
     if config_path:
         os.environ["BRICKSENTRY_CONFIG"] = str(Path(config_path).resolve())
     read_only = read_only or os.environ.get("BRICKSENTRY_READ_ONLY", "").strip().lower() in ("1", "true", "yes")
-    from bricksentry.mcp_server import serve
+    from bricksentry.mcp_server import AuthError, serve
 
-    serve(transport, host=host, port=port, read_only=read_only)
+    try:
+        serve(transport, host=host, port=port, read_only=read_only, insecure_no_auth=insecure_no_auth)
+    except AuthError as e:
+        err = click.ClickException(str(e))
+        err.exit_code = 2
+        raise err from None
 
 
 _INIT_CONFIG = """# bricksentry configuration

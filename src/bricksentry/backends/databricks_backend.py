@@ -147,6 +147,41 @@ class DatabricksBackend(Backend):
             f"CREATE OR REPLACE TABLE {self.qualified(target)} SHALLOW CLONE {self.qualified(source)}"
         )
 
+    def protections(self, tables: list[str]) -> dict[str, dict[str, Any]]:
+        # Unity Catalog lists masks and row filters in each catalog's information_schema.
+        # One query per catalog. If it can't be read (no UC, no access), say nothing:
+        # tables outside UC can't have them.
+        out: dict[str, dict[str, Any]] = {}
+        by_catalog: dict[str, list[tuple[str, str, str]]] = {}
+        for t in tables:
+            parts = [p.strip("`") for p in t.split(".")]
+            if len(parts) == 3:
+                by_catalog.setdefault(parts[0], []).append((t, parts[1].lower(), parts[2].lower()))
+        for cat, items in by_catalog.items():
+            where = " OR ".join(f"(lower(table_schema) = {self._lit(s)} AND lower(table_name) = {self._lit(n)})"
+                                for _, s, n in items)
+            sql = (f"SELECT 'mask' AS kind, table_schema, table_name, column_name "
+                   f"FROM {self.quote(cat)}.information_schema.column_masks WHERE {where} "
+                   f"UNION ALL SELECT 'filter' AS kind, table_schema, table_name, NULL AS column_name "
+                   f"FROM {self.quote(cat)}.information_schema.row_filters WHERE {where}")
+            try:
+                rows = self.query(sql)
+            except Exception:
+                continue
+            for r in rows:
+                for t, s, n in items:
+                    if str(r.get("table_schema", "")).lower() == s and str(r.get("table_name", "")).lower() == n:
+                        e = out.setdefault(t, {"masked": [], "row_filter": False})
+                        if r.get("kind") == "mask" and r.get("column_name"):
+                            e["masked"].append(str(r["column_name"]))
+                        elif r.get("kind") == "filter":
+                            e["row_filter"] = True
+        return out
+
+    @staticmethod
+    def _lit(v: str) -> str:
+        return "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
     def columns_at(self, table: str, version: int | None) -> dict[str, str]:
         if version is None:
             return self.columns(table)

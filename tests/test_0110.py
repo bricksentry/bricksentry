@@ -52,7 +52,8 @@ def test_cli_passes_http_options(monkeypatch):
     r = CliRunner().invoke(main, ["mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9100",
                                   "--read-only"])
     assert r.exit_code == 0, r.output
-    assert seen == {"transport": "streamable-http", "host": "0.0.0.0", "port": 9100, "read_only": True}
+    assert seen == {"transport": "streamable-http", "host": "0.0.0.0", "port": 9100, "read_only": True,
+                    "insecure_no_auth": False}
 
 
 def test_read_only_from_env(monkeypatch):

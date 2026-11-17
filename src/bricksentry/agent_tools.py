@@ -99,7 +99,7 @@ def whats_downstream(
         out["column_tags"] = {c: col_tags[c] for c in columns if col_tags.get(c)}
         feeds = s.lineage.column_downstream(table, list(columns), int(s.config.lineage.get("column_depth", 2)))
         out["column_downstream"] = [c.to_dict() for c in feeds]
-    return out
+    return agent_view.scrub_metadata(out)
 
 
 @_safe
@@ -130,7 +130,9 @@ def assess_change(
     rollback}]}. Pass `id` to safe_to_ship (and optionally explain_diff)."""
     s = get_sentry()
     tables = list(tables)
-    _gate(s, "assess_change", tables)
+    # Candidates an agent names are checked too: pointing an allowed table's candidate
+    # at a forbidden table would otherwise diff the forbidden one.
+    _gate(s, "assess_change", tables + [c for c in (candidates or {}).values() if c])
     a = s.assess(tables, candidates=candidates, pr=pr)
     out = agent_view.for_agent(a, s)
     agent_view.audit(s, "assess_change", tables, out)
@@ -163,6 +165,9 @@ def preview_write(
     {error} if the statement is refused or fails."""
     s = get_sentry()
     _gate(s, "preview_write", [target])
+    # Every table the statement reads must be allowed too (a subquery, MERGE USING, a
+    # join or a CTE could otherwise turn the counts into facts about a forbidden table).
+    _gate_sql(s, "preview_write", [target], sql.replace("{{target}}", target))
     raw = s.preview_write(sql, target, keys=keys)
     a = s.get_assessment(raw["id"])
     out = agent_view.for_agent(a, s, {"preview": raw.get("preview")}) if a else agent_view.scrub(raw)
@@ -193,9 +198,11 @@ def explain_diff(
         a = s.get_assessment(assessment_id)
         if a is None:
             return {"error": f"unknown assessment id {assessment_id}"}
+        _gate(s, "explain_diff", [t.table for t in a.tables])
         safe = agent_view.for_agent(a, s)
         return {"assessment_id": a.id, "explanations": {t["table"]: t["summary"] for t in safe["tables"]}}
     if table:
+        _gate(s, "explain_diff", [table])
         d = s.get_diff(table)
         if d is None:
             return {"error": f"no diff for {table} yet; call assess_change or preview_write first"}
@@ -219,15 +226,17 @@ def safe_to_ship(
     Returns {assessment_id, safe_to_ship: bool, verdict, risk_tier, rule_hits:
     [{rule, verdict, table, reason}], notify, next_step}, or {error} if the id
     is unknown."""
-    a = get_sentry().get_assessment(assessment_id)
+    s = get_sentry()
+    a = s.get_assessment(assessment_id)
     if a is None:
         return {"error": f"unknown assessment id {assessment_id}"}
+    _gate(s, "safe_to_ship", [t.table for t in a.tables])
     v = a.verdict.value
     next_step = {
         "pass": "Proceed: open or merge the pull request.",
         "warn": "Proceed, but include the warnings in the pull request description.",
         "needs_human": "Do not merge. Open the pull request with the report and request review from: "
-        + (", ".join(a.notify) or "a data owner") + ".",
+        + (", ".join(str(agent_view._plain(n)) for n in a.notify) or "a data owner") + ".",
         "block": "Stop. Fix the blocking issues listed in rule_hits, rebuild the candidate and assess again.",
     }[v]
     return {
@@ -236,7 +245,7 @@ def safe_to_ship(
         "verdict": v,
         "risk_tier": a.verdict.risk_tier,
         "rule_hits": agent_view.scrub([h.to_dict() for h in a.hits], "rule_hits"),
-        "notify": a.notify,
+        "notify": [agent_view._plain(n) for n in a.notify],
         "next_step": next_step,
     }
 
@@ -262,6 +271,14 @@ def rollback_plan(
         "current_version": version,
         "rollback_sql": s.rollback_plan(table),
     }
+
+
+def _gate_sql(s: Sentry, tool: str, tables: list[str], sql: str) -> None:
+    try:
+        agent_view.check_statement(s, sql)
+    except PermissionError as e:
+        agent_view.audit(s, tool, tables, refused=str(e))
+        raise
 
 
 def _gate(s: Sentry, tool: str, tables: list[str]) -> None:
