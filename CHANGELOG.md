@@ -4,6 +4,7 @@
 
 - `bricksentry test-alert --help` said it exits 1 when no webhook is configured; it exits 2 (configuration error), which the help now says. Found in the live test of 0.1.23.
 - README: "Validated on" covers the live run of 0.1.23.
+- README: the default policy is lenient on changes to a certified table itself (a doubled total only warns); use `builtin:certified` or `builtin:finance` to require a human. From an adversarial live test of 0.1.23.
 
 ## 0.1.23 (2026-11-16)
 

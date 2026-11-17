@@ -375,6 +375,8 @@ Start from a ready-made policy instead of writing one:
 
 Use one directly with `policy: builtin:finance`, or write an editable copy with `bricksentry init --policy finance`. `bricksentry policies finance` prints it. Tags come from Unity Catalog, so tag your tables `pii` or `certified` for those templates to apply.
 
+**The default policy is lenient on certified tables themselves.** It asks a human when a change reaches something *downstream* that's tagged `certified`, but a change *to* a certified table is treated like any other: doubling its totals only warns (`numeric-total-moved`), because many certified marts are rebuilt every day and their totals move for good reasons. If a certified table must not change quietly, use `builtin:certified` (any change to it needs a human, a type change blocks), `builtin:finance` for money tables, or tag the columns that matter so `changed_column_tag` rules apply.
+
 ### Policy conditions
 
 `table` (glob) · `tag` · `downstream_tag` · `downstream_kind` · `downstream_count_gt` · `removed_pct_gt` · `added_pct_gt` · `changed_pct_gt` · `row_count_change_pct_gt` · `row_count_drop_pct_gt` · `column_removed` · `column_added` · `column_type_changed` · `duplicate_keys` · `null_keys` · `sum_change_pct_gt` / `null_increase_gt` (optionally with `column`) · `changed_column` (glob) · `changed_column_tag` · `downstream_column_tag` · `any_change` · `diff_error` · `lineage_error`
