@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.28 (2026-11-17)
 
-Security fixes from live-test round 9 on 0.1.27 (MERGE, allowlist bypasses, metadata injection, remote access, governance features). Agents still never received production values; these close the remaining ways to learn about tables they shouldn't.
+Security fixes from live-test round 9 on 0.1.27 (MERGE, allowlist bypasses, metadata injection, remote access, governance features). Agents still never received production values; these close the remaining ways to learn about tables they shouldn't. Every round-9 attack was re-run on the fixes and refused or handled; the 15-scenario battery passed 15 of 15 on Databricks, and a live Unity Catalog row filter gave `needs_human` instead of a silent pass.
 
 - **`agent_tables` covers every table an agent touches.** It only checked the target, so an agent could read a forbidden table inside an allowed write (subquery, join, CTE, `MERGE ... USING`, `INSERT ... SELECT`) or name it as the candidate in `assess_change`, and learn its row counts. Statements are now parsed with a real SQL parser (sqlglot, a new dependency) and every table they read must be listed; agent-named candidates too; `explain_diff` and `safe_to_ship` refuse assessments of unlisted tables. What can't be checked by name is refused: table functions (`table_changes`, `read_files`), `IDENTIFIER(...)`, path-based tables, and SQL that doesn't parse. **If you use `agent_tables`:** sources of MERGE and INSERT ... SELECT must now be listed too, written with their full name (e.g. `main.sales.updates`), or agent previews that read them are refused. The CLI and Python API are unaffected.
 - **Column masks and row filters can't pass silently.** A masked column with 50 real changes diffed as unchanged. bricksentry now reads masks and row filters from Unity Catalog: masked columns aren't compared (`columns-not-compared`) and a row filter on either table gets `needs_human` (`row-filter`).

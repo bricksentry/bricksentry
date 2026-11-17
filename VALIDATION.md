@@ -33,6 +33,20 @@ Please share what you see, especially from other clouds, classic compute and big
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
 
+## Fix verification of 0.1.28 (November 17, 2026): every round 9 finding fixed
+
+Genie re-ran each round 9 attack on the fix commit, through the agent tools:
+
+| Finding | Result on 0.1.28 |
+|---|---|
+| `agent_tables` checked only the target | all six bypasses refused, naming the forbidden table (subquery, MERGE USING, INSERT ... SELECT, DELETE with subquery, candidate pointing); table functions and unparseable SQL refused; a MERGE whose source is listed runs exactly (10 added); the CLI and Python API stay ungated |
+| Free text in tags reached agents | the planted instruction came back as `[text hidden: 97 chars]` in `whats_downstream` and `preview_write`; short tags like `pii` kept |
+| MCP over HTTP had no auth | a non-localhost bind without a token refused to start; anonymous and wrong-token clients got HTTP 401; the right bearer token worked; `--read-only` still hides `preview_write` |
+| A masked column passed silently | `needs_human`, the column listed as not compared (masked), with a note |
+| `--from-git` traceback | one line, exit 2 |
+
+A live Unity Catalog row filter (hiding 11 of 17 changed rows) gave `needs_human` with the row-filter note; the 6 visible changes were counted exactly. The validation battery, now 15 scenarios with `agent_allowlist`, passed 15 of 15 in 254 s.
+
 ## Round 9 on 0.1.27 (November 17, 2026): basics to governance
 
 Run by Genie on Databricks Free Edition (serverless), from the published 0.1.27. Ten batteries, from the README's own commands to governance features. Five findings, all fixed in 0.1.28 (see the table below). What passed:
