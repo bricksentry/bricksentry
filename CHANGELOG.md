@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.26 (2026-11-17)
 
-Fixes for what two worst-case live tests of 0.1.25 on Databricks found.
+Fixes for what two worst-case live tests of 0.1.25 on Databricks found. A pre-release check passed on two Databricks Free Edition workspaces (47 of 47 on the first), including the 12-scenario validation battery and before/after repros of every fix.
 
 - **A changed copy of a duplicated key no longer shifts how the other copies pair.** 0.1.23 numbered the copies of a key by row hash and matched copy *n* with copy *n*, so one changed copy could move every copy after it: 2,000 rows sharing a NULL key with 2 real changes reported over a thousand changed rows (50,000 such rows: 36,563). Identical copies are now matched first; only the copies left over are paired. The same test now reports exactly 2 changed. New validation scenario `null_keys_changed`.
 - **A total moving away from zero now fires `sum_change_pct_gt`.** A column whose total went from 0 to 5 had no percentage change, so the rule never matched. It now matches, with the reason "sum(col) 0 -> 5", and the plain-English explanation lists it under totals.
@@ -11,6 +11,8 @@ Fixes for what two worst-case live tests of 0.1.25 on Databricks found.
 - **Clearer policy mistakes.** A verdict typo (`then: blok`) names the valid verdicts; verdicts are accepted in any case; `policy: strict` without `builtin:` says to write `builtin:strict`; a policy with no rules warns that every change will pass.
 - **Behavior change: no-op pull requests to pii and certified-fed tables now pass.** The default rules `pii-table` and `certified-downstream` now have `any_change: true`, like `dashboard-downstream`: they fire on any added, removed or changed row, any schema change or new duplicate keys, but not when the candidate is identical to production (before, that got `needs_human` with nothing to review). A failed or missing diff still counts as a change, for every `any_change` rule. To require a review regardless, add a custom rule such as `{name: pii-review, when: {tag: pii}, then: needs_human}`. New validation scenario `pii_noop` (identical rebuild: pass; 1-row edit: needs_human). Found in a live test of 0.1.25.
 - `preview_write` / `bricksentry preview` show one line when the clone or the statement fails ("The statement failed on the preview clone, so production was not touched: …") instead of the engine's full error. MCP tool errors keep only the first line.
+- The MCP tools `whats_downstream` and `rollback_plan` report a mistyped or missing table as "Table … not found" instead of an empty downstream list (which read as "nothing is downstream") or advice to take a snapshot. Found in the pre-release check.
+- A misspelled key under `backend:` in `bricksentry.yml` (say `path:` instead of `database:`) is rejected with the valid keys, instead of being ignored and connecting somewhere else. Found in the pre-release check.
 
 ## 0.1.25 (2026-11-16)
 

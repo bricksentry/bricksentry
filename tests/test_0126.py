@@ -147,3 +147,27 @@ def test_pii_gate_names_the_tag_and_fires_on_schema_only_and_missing_diff():
     custom = Policy({"rules": [{"name": "pii", "when": {"tag": "pii", "any_change": True}, "then": "needs_human"}]})
     v, hits = custom.evaluate("t", None, [], {"pii": "true"}, diff_error="boom")
     assert v.value == "needs_human" and "can't be ruled out" in hits[0].reason
+
+
+# --- found in the 0.1.26 pre-release check: mistyped names in agent tools --------
+def test_agent_tools_report_a_mistyped_table(sentry):
+    from bricksentry import agent_tools
+
+    agent_tools.set_sentry(sentry)
+    try:
+        for out in (agent_tools.whats_downstream("sales.orderz"), agent_tools.rollback_plan("sales.orderz")):
+            assert out["error"].startswith("LookupError: Table sales.orderz not found.")
+        assert agent_tools.whats_downstream("sales.orders")["count"] == 3  # real tables unchanged
+        assert "error" not in agent_tools.rollback_plan("sales.orders")
+    finally:
+        agent_tools.set_sentry(None)
+
+
+def test_misspelled_backend_key_is_rejected():
+    from bricksentry.backends.base import make_backend
+
+    with pytest.raises(ValueError, match="Unknown key\\(s\\) under backend: path for type duckdb. Valid keys: type, database"):
+        make_backend({"type": "duckdb", "path": "x.db"})
+    with pytest.raises(ValueError, match="warehouse"):
+        make_backend({"type": "databricks", "warehouse": "abc"})
+    assert make_backend({"type": "duckdb", "database": ":memory:"}).name == "duckdb"

@@ -83,6 +83,9 @@ def whats_downstream(
     s = get_sentry()
     nodes = s.downstream(table, depth)
     owner, tags = s.lineage.owner_and_tags(table)
+    if not nodes and not owner and not tags and not s.backend.table_exists(table):
+        # An empty answer for a mistyped name would read as "nothing is downstream".
+        raise LookupError(_not_found(table))
     out: dict[str, Any] = {
         "table": table,
         "owner": owner,
@@ -237,11 +240,19 @@ def rollback_plan(
     Returns {table, current_version, rollback_sql}, e.g. "RESTORE TABLE
     main.sales.orders TO VERSION AS OF 42", or {error}."""
     s = get_sentry()
+    version = s.backend.current_version(table)
+    if version is None and not s.backend.table_exists(table):
+        raise LookupError(_not_found(table))
     return {
         "table": table,
-        "current_version": s.backend.current_version(table),
+        "current_version": version,
         "rollback_sql": s.rollback_plan(table),
     }
+
+
+def _not_found(table: str) -> str:
+    return (f"Table {table} not found. Check the catalog, schema and table name (they must match "
+            "Unity Catalog exactly) and that you have SELECT on it.")
 
 
 TOOLS = [whats_downstream, assess_change, preview_write, explain_diff, safe_to_ship, rollback_plan]

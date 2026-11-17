@@ -123,9 +123,24 @@ def make_backend(spec: dict[str, Any] | None) -> Backend:
     if kind == "duckdb":
         from bricksentry.backends.duckdb_backend import DuckDBBackend
 
-        return DuckDBBackend(**spec)
+        return DuckDBBackend(**_known_keys(DuckDBBackend, kind, spec))
     if kind == "databricks":
         from bricksentry.backends.databricks_backend import DatabricksBackend
 
-        return DatabricksBackend(**spec)
+        return DatabricksBackend(**_known_keys(DatabricksBackend, kind, spec))
     raise ValueError(f"Unknown backend type: {kind!r} (expected 'databricks' or 'duckdb')")
+
+
+
+def _known_keys(cls: type, kind: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """Reject misspelled `backend:` keys instead of silently ignoring them (a `path:`
+    meant as `database:` would quietly connect to an empty in-memory database)."""
+    import inspect
+
+    params = inspect.signature(cls.__init__).parameters
+    known = [n for n, p in params.items() if n != "self" and p.kind not in (p.VAR_KEYWORD, p.VAR_POSITIONAL)]
+    unknown = sorted(set(spec) - set(known))
+    if unknown:
+        raise ValueError(f"Unknown key(s) under backend: {', '.join(unknown)} for type {kind}. "
+                         f"Valid keys: type, {', '.join(k for k in known if k != 'client' and k != 'connection')}.")
+    return spec

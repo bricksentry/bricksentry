@@ -1,7 +1,7 @@
 # Validation
 
 What bricksentry has been tested against on real Databricks, release by release, with the numbers. It includes the
-results that weren't perfect and every bug the live tests found. The unit tests (253, run on every push) use DuckDB
+results that weren't perfect and every bug the live tests found. The unit tests (255, run on every push) use DuckDB
 and a mocked Databricks SDK; this page is about the live runs.
 
 **Run it yourself.** The [validation notebook](examples/databricks/bricksentry_validation.py) runs the same risky
@@ -15,6 +15,8 @@ from bricksentry.validation import run_validation, print_results
 backend = make_backend({"type": "databricks", "warehouse_id": "<your warehouse id>"})
 print_results(run_validation(backend, scratch="main.bricksentry_validation"))
 ```
+
+To test an unreleased commit, install it with `%pip install --force-reinstall --no-deps "bricksentry @ git+https://github.com/bricksentry/bricksentry@<commit>"` and then `dbutils.library.restartPython()`; without `--force-reinstall`, pip keeps an installed release with the same version number.
 
 Please share what you see, especially from other clouds, classic compute and bigger tables:
 [open a validation report](https://github.com/bricksentry/bricksentry/issues/new?template=validation_report.yml).
@@ -30,6 +32,23 @@ Please share what you see, especially from other clouds, classic compute and big
   scratch schema; the scratch schema is dropped at the end, and the run confirms that the production tables kept their
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
+
+## Pre-release check of 0.1.26 (November 17, 2026): 47 of 47 passed
+
+Run by Genie on two Databricks Free Edition workspaces (a fresh one and the one used for earlier rounds, serverless SQL warehouses), on the release commit installed from GitHub. Both said ship; the second ran the battery in 154 s and the 1M-row diff in 5.3 s, and checked the earlier rounds' numbers directly. It re-ran the cases from two worst-case rounds on 0.1.25 that had found five problems.
+
+| Check | Result |
+|---|---|
+| Validation battery, now 12 scenarios | 12 of 12 passed in 162.5 s, including the new `null_keys_changed` (changed = 2) and `pii_noop` (identical: `pass`; 1-row edit: `needs_human`) |
+| 50,000 rows sharing a NULL key, 2 real changes | changed = 2 (0.1.25: 36,563); a real extra copy counted as added, a missing copy as removed, a drop and a change on one key as 1 removed and 1 changed |
+| A column total going from 0 to 5 | `numeric-total-moved` fired with "sum(amt) 0 -> 5"; a column staying at 0 stayed quiet |
+| Two near-max `DECIMAL(38,0)` values | the diff completed with correct counts and a note that totals are approximate (0.1.25: the whole diff failed) |
+| A bad write, then RENAME COLUMN, SET TBLPROPERTIES and OPTIMIZE | the rollback warning listed the rename and the properties change, not OPTIMIZE |
+| Policy mistakes and a failing `preview_write` | one clear line each; no clone left behind, production byte-identical |
+| The pii and certified gates (default policy) | identical candidate: `pass`; 1 row, a dropped column or a new duplicate key: flagged with both gates named; missing candidate: `needs_human`; a custom rule without `any_change` restores review of every change |
+| Regression | MCP lists 6 tools (5 read-only); refused statements exit 2; a 1M-row composite-key diff took 5.9 s and found exactly the 4 changed rows; no leaked clones |
+
+The checks found four small issues: `whats_downstream` and `rollback_plan` answered a mistyped table name with an empty result and with snapshot advice, and a misspelled key under `backend:` was ignored (all three fixed before release), and MCP errors start with the exception type, e.g. `RuntimeError: The statement failed…` (kept: it tells an agent what kind of error it got).
 
 ## Release test of 0.1.25 (November 16, 2026): passed, with the fix reproduced A/B
 
@@ -135,6 +154,8 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 | Worst-case rounds of 0.1.25 | A column total going from 0 to 5 didn't fire `sum_change_pct_gt` (no percentage from zero) | 0.1.26 |
 | Worst-case rounds of 0.1.25 | A `DECIMAL(38)` total overflowing failed the whole diff | 0.1.26 |
 | Worst-case rounds of 0.1.25 | The rollback warning ignored newer non-data changes (RENAME COLUMN, SET TBLPROPERTIES) that a `RESTORE` also undoes | 0.1.26 |
+| Pre-release check of 0.1.26 | `whats_downstream` returned an empty list for a mistyped table, and `rollback_plan` suggested a snapshot | 0.1.26 |
+| Pre-release check of 0.1.26 | A misspelled `backend:` key (`path:` for `database:`) was silently ignored | 0.1.26 |
 | Worst-case rounds of 0.1.25 | The default `pii-table` and `certified-downstream` rules asked a human on a pull request that changed nothing (noise that trains reviewers to ignore the gate) | 0.1.26 |
 | Worst-case rounds of 0.1.25 | A verdict typo gave a bare `ValueError`; `policy: strict` was read as a file path; an empty policy silently passed everything; `preview_write` showed the engine's full error | 0.1.26 |
 | This battery, Nov 16 | A sampled diff skipped the full-table check when the schema had also changed, so changed values in a retyped column outside the sample could go uncounted (the verdict still flagged the type change) | 0.1.25 |
