@@ -177,6 +177,29 @@ def _ensure_scratch(db: Any, schema: str) -> None:
         raise
 
 
+_NOT_FOUND = re.compile(
+    r"TABLE_OR_VIEW_NOT_FOUND|cannot be found|does not exist|not found|no such table", re.IGNORECASE)
+
+
+def _read_history(db: Any, table: str, limit: int) -> list[dict[str, Any]]:
+    """DESCRIBE HISTORY, with a one-line message for the common mistakes instead of the
+    engine's full error (which echoes the SQL and adds unrelated hints)."""
+    try:
+        return db.history(table, limit)
+    except Exception as e:
+        msg = str(e)
+        if _NOT_FOUND.search(msg):
+            raise ValueError(
+                f"Table {table} not found. Check the catalog, schema and table name (they must match "
+                "Unity Catalog exactly) and that you have SELECT on it.") from None
+        if "PERMISSION_DENIED" in msg or "INSUFFICIENT_PERMISSIONS" in msg:
+            raise ValueError(
+                f"No permission to read {table}: check-last-change needs SELECT on the table "
+                "(and its Delta history).") from None
+        first = (msg.strip().splitlines() or [type(e).__name__])[0][:300]
+        raise RuntimeError(f"Could not read the history of {table}: {first}") from None
+
+
 def check_change(
     sentry: Sentry,
     table: str,
@@ -195,7 +218,7 @@ def check_change(
     if not _NAME.fullmatch(table):
         raise ValueError(f"table must be schema.table or catalog.schema.table; got {table!r}")
 
-    history = db.history(table, history_limit)
+    history = _read_history(db, table, history_limit)
     change = pick_change(table, history, version=version, since=since)
     keys = keys or sentry.config.spec(table).keys or db.primary_key(table)
     if not keys:

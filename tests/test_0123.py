@@ -119,3 +119,60 @@ def test_old_saved_assessments_still_load():
     old = {"id": "abc", "verdict": "pass", "tables": [], "notify": []}
     a = Assessment.from_dict(old)
     assert a.created_at is None and a.policy_sha256 is None
+
+
+# --- friendly errors for a mistyped table (found in a live test of 0.1.23) ---------
+class _HistoryFails:
+    """A Delta-like backend whose DESCRIBE HISTORY raises the given engine error."""
+
+    name = "fake"
+    supports_time_travel = True
+
+    def __init__(self, message):
+        self.message = message
+
+    def history(self, table, limit=50):
+        raise RuntimeError(self.message)
+
+
+def _check(message):
+    import pytest
+
+    from bricksentry.history import _read_history
+
+    with pytest.raises((ValueError, RuntimeError)) as e:
+        _read_history(_HistoryFails(message), "main.hr.employes", 50)
+    return e.value
+
+
+def test_typo_in_table_name_is_one_clear_line():
+    raw = ("[TABLE_OR_VIEW_NOT_FOUND] The table or view `main`.`hr`.`employes` cannot be found. "
+           "Verify the spelling and correctness of the schema and catalog.\nIf you did not qualify the "
+           "name with a schema, verify the current_schema() output, or qualify the name with the correct "
+           "schema and catalog.\nTo tolerate the error on drop use DROP VIEW IF EXISTS or DROP TABLE IF "
+           "EXISTS. SQLSTATE: 42P01; line 1 pos 17;\n'DescribeDeltaHistory ...")
+    e = _check(raw)
+    assert isinstance(e, ValueError)
+    assert str(e).startswith("Table main.hr.employes not found.")
+    assert "DROP VIEW" not in str(e) and "\n" not in str(e)
+
+
+def test_permission_and_other_errors():
+    e = _check("[INSUFFICIENT_PERMISSIONS] User does not have SELECT on table")
+    assert isinstance(e, ValueError) and "No permission to read main.hr.employes" in str(e)
+    e = _check("something odd happened\nwith a long second line")
+    assert isinstance(e, RuntimeError)
+    assert str(e) == "Could not read the history of main.hr.employes: something odd happened"
+
+
+def test_job_task_reports_a_typo_cleanly():
+    from bricksentry.job import run
+
+    lines = []
+    raw = ("[TABLE_OR_VIEW_NOT_FOUND] The table or view `main`.`hr`.`employes` cannot be found.\n"
+           "To tolerate the error on drop use DROP VIEW IF EXISTS. SQLSTATE: 42P01")
+    code = run(["--tables", "main.hr.employes", "--key", "id"], backend=_HistoryFails(raw), out=lines.append)
+    assert code == 2
+    err = [ln for ln in lines if "ERROR" in ln]
+    assert err == ["main.hr.employes: ERROR Table main.hr.employes not found. Check the catalog, schema and "
+                   "table name (they must match Unity Catalog exactly) and that you have SELECT on it."]

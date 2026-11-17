@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `check-last-change` and the job task report a mistyped or missing table in one line ("Table main.hr.employes not found. Check the catalog, schema and table name…"), and a missing permission as "No permission to read …", instead of the engine's full error with the echoed SQL and unrelated hints. Other history errors keep only their first line. Found in a live test of 0.1.23.
 - `bricksentry test-alert --help` said it exits 1 when no webhook is configured; it exits 2 (configuration error), which the help now says. Found in the live test of 0.1.23.
 - README: "Validated on" covers the live run of 0.1.23.
 - README: the default policy is lenient on changes to a certified table itself (a doubled total only warns); use `builtin:certified` or `builtin:finance` to require a human. From an adversarial live test of 0.1.23.
