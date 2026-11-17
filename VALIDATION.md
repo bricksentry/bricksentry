@@ -31,6 +31,31 @@ Please share what you see, especially from other clouds, classic compute and big
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
 
+## The validation battery on Databricks (November 16, 2026): 10 of 10 passed
+
+The battery published in this repo (`bricksentry.validation`, the
+[validation notebook](examples/databricks/bricksentry_validation.py)), installed from GitHub `main` after 0.1.24 and run
+with its default sizes in a fresh scratch schema. Total time: 111 s on a 2X-Small serverless warehouse.
+
+| Scenario | Result | Time |
+|---|---|---|
+| `row_loss`: delete the department-less aggregate row | `needs_human` (row-loss, numeric-total-moved) | 8.3 s |
+| `bad_merge`: a MERGE re-inserts a department | `block`, 1 added, 1 duplicate key | 8.3 s |
+| `everything_wrong`: six problems in one change | `block`, 7 rules | 10.0 s |
+| `hidden_in_sample`: 5 of 200,000 salaries ×5, outside a 5% sample | the checksum caught them and re-ran on all rows | 14.7 s |
+| `certified_totals_default`: double a certified table's totals | `warn` (the documented default) | 8.8 s |
+| `certified_totals_strict`: the same under `builtin:certified` | `block`* | 8.3 s |
+| `null_keys`: 2,000 NULL keys each side | 3,000 unchanged, paired one to one | 9.0 s |
+| `exact_totals`: 1,000,000 × 0.10 DECIMAL | exactly 100,000.0 on both sides | 10.0 s |
+| `landed_change`: a bad write committed to Delta, then `check-last-change` | `block` and the `RESTORE` | 20.2 s |
+| `typo_table`: `check-last-change` on a mistyped name | one line: "Table … not found" | 0.3 s |
+
+\* On Databricks, doubling a `DECIMAL(18,2)` widens its type, so this run also fired the type-change rules. Since
+0.1.25 the scenario keeps the column type, so the verdict comes from `certified-table-changed` alone.
+
+Every table the battery created, including the clones made by `check-last-change`, was gone before the scratch schema
+was dropped. Also confirmed on the released 0.1.24 from PyPI: a mistyped table in `check-last-change` prints one line.
+
 ## 0.1.23 and 0.1.24 (November 16, 2026)
 
 ### Release test of 0.1.23: 8 of 8 passed
@@ -96,7 +121,7 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
-| This battery, Nov 16 | A sampled diff skipped the full-table check when the schema had also changed, so changed values in a retyped column outside the sample could go uncounted (the verdict still flagged the type change) | 0.1.25 (unreleased) |
+| This battery, Nov 16 | A sampled diff skipped the full-table check when the schema had also changed, so changed values in a retyped column outside the sample could go uncounted (the verdict still flagged the type change) | 0.1.25 |
 | User-path test of 0.1.23 | A mistyped table name printed the engine's full error, including an unrelated hint about dropping views | 0.1.24 |
 | Real job run of 0.1.23 | The job task log ended with IPython's "To exit: use 'exit'…" line | 0.1.24 |
 | Release test of 0.1.23 | `test-alert` help said exit 1 when no webhook is configured; it exits 2 | 0.1.24 |

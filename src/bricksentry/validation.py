@@ -231,13 +231,16 @@ class _Validation:
     def certified_totals_strict(self) -> ScenarioResult:
         cand = self._double_sales("bsv_c_cert_strict")
         a = self.assess(self.mart, cand, sentry=self.certified)
-        ok = a.verdict.rank >= Verdict.NEEDS_HUMAN.rank
+        rules = {h.rule for h in a.hits}
+        ok = a.verdict.rank >= Verdict.NEEDS_HUMAN.rank and "certified-table-changed" in rules and not (
+            a.tables[0].diff and a.tables[0].diff.schema.type_changed)
         return ScenarioResult("certified_totals_strict", "the same change under policy builtin:certified",
-                              "needs_human or worse", f"{a.verdict.value}: {sorted({h.rule for h in a.hits})}", ok)
+                              "needs_human or worse from certified-table-changed (same column types)",
+                              f"{a.verdict.value}: {sorted(rules)}", ok)
 
     def _double_sales(self, name: str) -> str:
         return self.create(name, f"SELECT department, headcount, CASE WHEN department = 'Sales' "
-                                 f"THEN total_salary * 2 ELSE total_salary END AS total_salary, avg_salary "
+                                 f"THEN CAST(total_salary * 2 AS DECIMAL(18, 2)) ELSE total_salary END AS total_salary, avg_salary "
                                  f"FROM {self.q(self.mart)}")
 
     def null_keys(self) -> ScenarioResult:
