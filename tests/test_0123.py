@@ -176,3 +176,20 @@ def test_job_task_reports_a_typo_cleanly():
     err = [ln for ln in lines if "ERROR" in ln]
     assert err == ["main.hr.employes: ERROR Table main.hr.employes not found. Check the catalog, schema and "
                    "table name (they must match Unity Catalog exactly) and that you have SELECT on it."]
+
+
+def test_job_main_exits_without_the_ipython_exit_hint(monkeypatch):
+    import warnings
+
+    import pytest
+
+    from bricksentry import job
+
+    monkeypatch.setattr(job, "run", lambda argv=None: 1)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("default")
+        with pytest.raises(SystemExit) as e:
+            job.main([])
+        warnings.warn("To exit: use 'exit', 'quit', or Ctrl-D.", UserWarning, stacklevel=2)  # IPython's hint
+    assert e.value.code == 1
+    assert not [w for w in caught if "To exit" in str(w.message)]

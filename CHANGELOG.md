@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.24 (2026-11-16)
 
+Small fixes from two adversarial live tests of 0.1.23 on Databricks, including the job task running inside a real Databricks job.
+
+- The job task log no longer ends with IPython's "To exit: use 'exit', 'quit', or Ctrl-D." after a failing verdict (Databricks runs `spark_python_task` scripts inside IPython). The exit code is unchanged.
 - `check-last-change` and the job task report a mistyped or missing table in one line ("Table main.hr.employes not found. Check the catalog, schema and table name…"), and a missing permission as "No permission to read …", instead of the engine's full error with the echoed SQL and unrelated hints. Other history errors keep only their first line. Found in a live test of 0.1.23.
 - `bricksentry test-alert --help` said it exits 1 when no webhook is configured; it exits 2 (configuration error), which the help now says. Found in the live test of 0.1.23.
 - README: "Validated on" covers the live run of 0.1.23.

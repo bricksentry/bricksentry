@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import sys
+import warnings
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -185,6 +186,10 @@ def main(argv: list[str] | None = None) -> None:
     even ``SystemExit(0)``, as a task error, so a clean run must simply return."""
     code = run(argv)
     if code:
+        # In a spark_python_task the script runs inside IPython, which follows a
+        # SystemExit with "To exit: use 'exit', 'quit', or Ctrl-D." at the end of the
+        # task log. The exit code is what matters, so keep that line out of the log.
+        warnings.filterwarnings("ignore", message="To exit: use")
         sys.exit(code)
 
 
