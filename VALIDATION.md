@@ -1,7 +1,7 @@
 # Validation
 
 What bricksentry has been tested against on real Databricks, release by release, with the numbers. It includes the
-results that weren't perfect and every bug the live tests found. The unit tests (255, run on every push) use DuckDB
+results that weren't perfect and every bug the live tests found. The unit tests (271, run on every push) use DuckDB
 and a mocked Databricks SDK; this page is about the live runs.
 
 **Run it yourself.** The [validation notebook](examples/databricks/bricksentry_validation.py) runs the same risky
@@ -150,6 +150,10 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
+| Round 7 (leaks, data shapes, races) on 0.1.26 | `preview_write` returned example values, so an agent without access could read production values by previewing an UPDATE of the rows it wanted | 0.1.27 |
+| Round 7 on 0.1.26 | Diff queries weren't pinned to one table version: a candidate replaced mid-diff gave changed=49 (old state 5, new 50) with no warning | 0.1.27 |
+| Round 7 on 0.1.26 | One MAP column failed the whole diff (Spark can't compare maps) | 0.1.27 |
+| Round 7 on 0.1.26 | FLOAT/DOUBLE rounding (`0.1 + 0.2` vs `0.3`) showed every row changed, with no hint why | 0.1.27 (note + opt-in `float_tolerance`) |
 | Worst-case rounds of 0.1.25 | Copies of a duplicated key were paired by rank, so one changed copy shifted the rest: 50,000 rows sharing a NULL key with 2 real changes reported 36,563 changed. Over-reports, never hides | 0.1.26 |
 | Worst-case rounds of 0.1.25 | A column total going from 0 to 5 didn't fire `sum_change_pct_gt` (no percentage from zero) | 0.1.26 |
 | Worst-case rounds of 0.1.25 | A `DECIMAL(38)` total overflowing failed the whole diff | 0.1.26 |

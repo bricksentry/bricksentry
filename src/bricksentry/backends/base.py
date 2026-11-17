@@ -39,6 +39,20 @@ class Backend(ABC):
     def qualified(self, table: str) -> str:
         return ".".join(self.quote(p) for p in table.split("."))
 
+    def columns_at(self, table: str, version: int | None) -> dict[str, str]:
+        """Like :meth:`columns`, for ``table`` at ``version``."""
+        return self.columns(table)
+
+    def canon(self, expr: str, type_name: str) -> str:
+        """An expression for ``expr`` that can be compared and hashed (e.g. a MAP as
+        key-sorted JSON on engines that can't compare maps). Identity by default."""
+        return expr
+
+    def at_version(self, table: str, version: int | None) -> str:
+        """``table`` as it was at ``version`` (for a FROM clause). Engines without
+        time travel read the table as it is."""
+        return self.qualified(table)
+
     @property
     def string_type(self) -> str:
         return "STRING"
@@ -47,14 +61,14 @@ class Backend(ABC):
     def sample_predicate(self, keys: list[str], pct: float, alias: str | None = None) -> str:
         """Deterministic hash sample on the key columns, identical on both sides."""
 
-    def row_checksum(self, columns: list[str]) -> str | None:
+    def row_checksum(self, columns: list[str], types: dict[str, str] | None = None) -> str | None:
         """SQL aggregate: an order-independent checksum over ``columns`` for every row.
 
         Used to check a sampled diff against the whole table. ``None`` means the
         backend has no cheap row hash, and the guard is skipped."""
         return None
 
-    def row_hash(self, columns: list[str]) -> str | None:
+    def row_hash(self, columns: list[str], types: dict[str, str] | None = None) -> str | None:
         """SQL for a hash of one row's ``columns``; orders copies of a duplicated key
         so identical copies pair up. ``None`` means unsupported (copies are paired in
         no particular order)."""

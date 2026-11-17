@@ -153,6 +153,26 @@ Designed for agents:
 - **Bounded cost:** deterministic hash sampling (`sample_pct`), capped samples, and lineage limited by depth and lookback window. A full-table checksum guards the sample: if the sample shows no change but the tables differ, the diff re-runs on every row, so a one-row change can't slip through.
 - **Assessments are saved** as JSON (default `~/.bricksentry/assessments`), so `explain_diff` and `safe_to_ship` work from another process or a fresh `Sentry`.
 
+### What an agent can learn about your data
+
+bricksentry usually runs with more read access than the agent that calls it, so the tools are built so an agent never sees production *values*:
+
+| Tool | What the agent gets | What it never gets |
+|---|---|---|
+| `whats_downstream`, `rollback_plan` | Table and column names, owners, tags, versions | Any row data |
+| `preview_write`, `assess_change` | Row counts (added, removed, changed), changed columns, schema changes, null counts, duplicate keys, total changes as a percentage (one decimal), the verdict and rule reasons | Example values (before or after), absolute totals, segment values, quoted values in engine errors |
+| `explain_diff`, `safe_to_ship` | The same, as text | The same |
+
+The new value is hidden too, because an agent can write `SET note = ssn` and read its own "new" value. Humans keep the detail: the CLI, the Python API and the pull-request report show example values, except in tables or columns tagged `pii`, whose values a report never shows.
+
+**Counts can still leak information.** An agent could preview `DELETE ... WHERE ssn LIKE '1%'` and read the number of removed rows, then narrow it down. No masking stops that, so list the tables agents may assess or preview:
+
+```yaml
+agent_tables: ["main.sales_dev.*", "main.sales.orders"]   # globs, any case; others are refused
+```
+
+Without `agent_tables`, agents can check any table bricksentry can read. Run the MCP server under an identity that can read only what the agent should. Every agent `assess_change` and `preview_write`, refused or not, is logged to `bricksentry.audit` and to `audit.jsonl` in the assessment store (time, actor, tables, verdict, row counts), so a run of small probing previews is visible.
+
 The same tools are plain Python functions in `bricksentry.agent_tools`, so you can use them from LangGraph, the OpenAI Agents SDK or the Databricks Agent Framework without MCP.
 
 To watch the whole loop, run `bricksentry demo` (see the top of this page). `bricksentry demo --report report.md` also writes the pull-request comment a reviewer would see.
@@ -297,6 +317,8 @@ backend: {type: databricks, warehouse_id: abc123}      # auth: standard Databric
 sandbox_schema: main.bricksentry_sandbox
 candidate_pattern: "{catalog}.{schema}_pr_{pr}.{table}"
 sample_pct: 10                                         # sample_guard re-checks the whole table (on by default)
+float_tolerance: 1e-9                                  # optional: FLOAT/DOUBLE within this relative difference count as equal
+agent_tables: ["main.sales_dev.*"]                     # optional: tables AI agents may assess or preview (see above)
 assessment_store: ~/.bricksentry/assessments           # or false to keep assessments in memory
 lineage: {type: databricks, depth: 3, lookback_days: 90, column_depth: 2}   # also: exclude, exclude_dropped
 tables:
@@ -326,6 +348,10 @@ lineage:
 ```
 
 Typos are caught: an unknown key such as `sample_pc` prints a warning that names the right one (`did you mean 'sample_pct'?`) instead of being silently ignored.
+
+**Consistent reads.** Every diff reads both tables at the Delta version they had when it started (`VERSION AS OF`), so a job writing to them mid-check can't mix two states into one result. If the candidate gets a new version during the check, the result says so and asks a human to re-run. Views and other objects without time travel are read as they are, with a before-and-after version check.
+
+**Floats.** FLOAT and DOUBLE are compared exactly by default, so `0.1 + 0.2` and `0.3` differ. If a column changes everywhere but its total stays the same, the diff says it's likely rounding. Set `float_tolerance` to compare within a relative tolerance; NaN, infinity and NULL still compare exactly, and DECIMAL is always exact. MAP columns are compared by their entries sorted by key, so a map written in a different order isn't a change. A column the engine can't compare at all is left out with a note, and the check asks a human.
 
 **Which totals are checked.** `sum_change_pct_gt` rules and summaries look at measures: by default every numeric column except keys and columns whose names look like IDs, codes, years and other date parts, coordinates, ratings, scores or rates (a 10% drop in `sum(established_year)` only says rows were removed). List `measures` for a table to choose exactly, or set `measures: all` to check every numeric column. A rule that names a column (`when: {column: rating, sum_change_pct_gt: 1}`) always checks it.
 
@@ -405,7 +431,7 @@ Without lineage access bricksentry still diffs, and adds a `lineage-unavailable`
 
 ## What a check costs
 
-The work runs on your SQL warehouse as plain SQL; nothing large is copied out. One table diff runs about five queries: a duplicate-key count on each side, one full outer join on the key columns, and one profile (row count, nulls, totals) per side, plus up to ten small queries for example values. Each reads both versions of the table, so cost grows with table size: seconds for millions of rows, minutes and real warehouse cost for hundreds of millions. For big tables, set `sample_pct` (a fixed hash sample of keys, checked against a full-table checksum so a change outside the sample isn't missed), or check only the tables that matter. Lineage lookups are one query per depth level, bounded by `lookback_days`.
+The work runs on your SQL warehouse as plain SQL; nothing large is copied out. One table diff runs about five queries (plus a few cheap metadata queries to pin each table's Delta version): a duplicate-key count on each side, one full outer join on the key columns, and one profile (row count, nulls, totals) per side, plus up to ten small queries for example values. Each reads both versions of the table, so cost grows with table size: seconds for millions of rows, minutes and real warehouse cost for hundreds of millions. For big tables, set `sample_pct` (a fixed hash sample of keys, checked against a full-table checksum so a change outside the sample isn't missed), or check only the tables that matter. Lineage lookups are one query per depth level, bounded by `lookback_days`.
 
 ## Audit trail
 
@@ -416,7 +442,7 @@ Every assessment records when it ran (UTC), the bricksentry version, a SHA-256 f
 - **Lineage is recorded at runtime.** Brand-new tables have no downstream history yet. Unity Catalog doesn't capture RDD operations, and UDFs hide column-level mapping; column lineage records source-to-target derivations, so a column used only in a filter or join may not appear.
 - **Keys are required.** Tables without a stable key can't be diffed row by row yet (an aggregate-profile mode is planned).
 - **Changed-table detection uses path globs** from config. It doesn't parse Asset Bundles yet.
-- **Validated on Databricks** (serverless, November 2026): a 2-million-row table with 0.1.4 (lineage, rollback plans, previews on shallow clones, every verdict level, the sampling guard catching a single changed row), then live runs of every release up to 0.1.26 on a Free Edition workspace with an HR pipeline: pull-request gating with comment updates, the bundle demo job, `check-last-change` and the newer-changes warning in the CLI, report, JSON and Slack, the refused-statement guards, outbound-URL checks, one-to-one matching of 2,000 NULL keys, exact totals over a million decimal rows, the audit trail, an AI agent attempting six risky changes on the live pipeline, the job task blocking a bad MERGE inside a real Databricks job, and worst-case rounds (50,000 NULL keys, near-max decimals, exotic types, 200-column tables) whose five findings were fixed in 0.1.26. Every run, with its numbers and the bugs it found, is in [VALIDATION.md](VALIDATION.md). The automated tests use DuckDB and a mocked SDK, so please run the [validation notebook](examples/databricks/bricksentry_validation.py) on your workspace and [share a validation report](https://github.com/bricksentry/bricksentry/issues/new?template=validation_report.yml), whether it passes or not.
+- **Validated on Databricks** (serverless, November 2026): a 2-million-row table with 0.1.4 (lineage, rollback plans, previews on shallow clones, every verdict level, the sampling guard catching a single changed row), then live runs of every release up to 0.1.27 on a Free Edition workspace with an HR pipeline: pull-request gating with comment updates, the bundle demo job, `check-last-change` and the newer-changes warning in the CLI, report, JSON and Slack, the refused-statement guards, outbound-URL checks, one-to-one matching of 2,000 NULL keys, exact totals over a million decimal rows, the audit trail, an AI agent attempting six risky changes on the live pipeline, the job task blocking a bad MERGE inside a real Databricks job, and worst-case rounds (50,000 NULL keys, near-max decimals, exotic types, 200-column tables) whose five findings were fixed in 0.1.26, and a round of leak, data-shape and race tests whose four findings were fixed in 0.1.27. Every run, with its numbers and the bugs it found, is in [VALIDATION.md](VALIDATION.md). The automated tests use DuckDB and a mocked SDK, so please run the [validation notebook](examples/databricks/bricksentry_validation.py) on your workspace and [share a validation report](https://github.com/bricksentry/bricksentry/issues/new?template=validation_report.yml), whether it passes or not.
 
 ## Roadmap
 

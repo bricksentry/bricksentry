@@ -54,6 +54,7 @@ class Sentry:
             segment_by=spec.segment_by,
             max_samples=self.config.max_samples,
             sample_guard=self.config.sample_guard,
+            float_tolerance=self.config.float_tolerance,
         )
         self._diffs[d.table] = d
         return d

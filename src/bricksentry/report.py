@@ -65,7 +65,12 @@ def _table_section(t: TableAssessment, max_downstream: int) -> list[str]:
             out += ["<details><summary>Column changes</summary>", "",
                     "| Column | Rows changed | Nulls (base → cand.) | Sum change |", "|---|---:|---|---:|"]
             for c in sorted(changed_cols, key=lambda c: -c.changed_rows):
-                sc = f"{c.sum_change_pct:+.2f}%" if c.sum_change_pct is not None else "–"
+                if c.sum_change_pct is not None:
+                    sc = f"{c.sum_change_pct:+.2f}%"
+                elif c.sum_moved_from_zero:
+                    sc = "from 0" if _hide_values(t, c.column) else f"0 → {c.candidate_sum:,}"
+                else:
+                    sc = "–"
                 out.append(f"| `{c.column}` | {c.changed_rows:,} | {c.base_nulls} → {c.candidate_nulls} | {sc} |")
             samples = [c for c in changed_cols if c.samples]
             if samples:
@@ -73,7 +78,10 @@ def _table_section(t: TableAssessment, max_downstream: int) -> list[str]:
                 for c in samples[:3]:
                     for s in c.samples[:3]:
                         key = ", ".join(f"{k}={s.get(k)}" for k in d.keys)
-                        out.append(f"- `{c.column}` @ {key}: `{s.get('base_value')}` → `{s.get('candidate_value')}`")
+                        if _hide_values(t, c.column):
+                            out.append(f"- `{c.column}` @ {key}: value hidden (tagged pii)")
+                        else:
+                            out.append(f"- `{c.column}` @ {key}: `{s.get('base_value')}` → `{s.get('candidate_value')}`")
             out += ["", "</details>", ""]
     if t.downstream:
         out += [f"<details><summary>Blast radius: {len(t.downstream)} downstream asset(s)</summary>", "",
@@ -110,3 +118,13 @@ def _table_section(t: TableAssessment, max_downstream: int) -> list[str]:
 
 def _esc(s: str) -> str:
     return s.replace("|", "\\|").replace("\n", " ")
+
+
+def _is_pii(tags: dict[str, str] | None) -> bool:
+    return any("pii" in str(k).lower() or "pii" in str(v).lower() for k, v in (tags or {}).items())
+
+
+def _hide_values(t: TableAssessment, column: str) -> bool:
+    """Values in a pii-tagged table or column never appear in a report, which a pull
+    request may show to people who can't read the table."""
+    return _is_pii(t.tags) or _is_pii(t.column_tags.get(column))

@@ -158,7 +158,7 @@ class _Validation:
         out = []
         for fn in (self.row_loss, self.bad_merge, self.everything_wrong, self.hidden_in_sample,
                    self.certified_totals_default, self.certified_totals_strict, self.null_keys,
-                   self.null_keys_changed, self.pii_noop,
+                   self.null_keys_changed, self.pii_noop, self.agent_sees_no_values, self.map_column,
                    self.exact_totals, self.landed_change, self.typo_table):
             t0 = time.time()
             try:
@@ -278,6 +278,47 @@ class _Validation:
         return ScenarioResult("pii_noop", "a PII table feeding a certified mart: an identical rebuild, then a 1-row salary edit",
                               "identical: pass; 1 row changed: needs_human (pii-table, certified-downstream)",
                               f"identical: {a.verdict.value}; 1 row: {b.verdict.value} {sorted(rules)}", ok)
+
+    def agent_sees_no_values(self) -> ScenarioResult:
+        """An agent uses preview_write as a lookup: "update" chosen rows and read the
+        old values back. Agent tools must return counts, never the values."""
+        import json
+
+        from bricksentry import agent_tools
+
+        before = agent_tools._SENTRY
+        agent_tools.set_sentry(self.sentry)
+        try:
+            out = agent_tools.preview_write(
+                "UPDATE {{target}} SET email = 'redacted', salary = salary * 2 WHERE emp_id IN (7, 42, 99)", self.emp)
+            exp = agent_tools.explain_diff(assessment_id=out.get("id")) if out.get("id") else {}
+        finally:
+            agent_tools.set_sentry(before)
+        text = json.dumps([out, exp], default=str)
+        secrets = ["user7@example.com", "user42@example.com", "user99@example.com", "40350", "42100", "44950"]
+        leaked = [x for x in secrets if x in text]
+        changed = ((out.get("tables") or [{}])[0].get("diff") or {}).get("changed_rows")
+        ok = "error" not in out and changed == 3 and not leaked
+        return ScenarioResult("agent_sees_no_values",
+                              "an agent previews an UPDATE of 3 rows to read their emails and salaries back",
+                              "changed=3 reported; no email or salary value in anything the agent gets",
+                              f"changed={changed}, leaked={leaked or 'none'}" + (f", error={out['error']}" if "error" in out else ""),
+                              ok)
+
+    def map_column(self) -> ScenarioResult:
+        """A MAP column (which Spark can't compare directly), written in a different key
+        order, next to one real change in a normal column."""
+        mk = (lambda a, b: f"map(['a', 'b'], [{a}, {b}])") if self.db.name == "duckdb" else (lambda a, b: f"map('a', {a}, 'b', {b})")
+        mk_rev = (lambda a, b: f"map(['b', 'a'], [{b}, {a}])") if self.db.name == "duckdb" else (lambda a, b: f"map('b', {b}, 'a', {a})")
+        base = self.create("bsv_map", f"SELECT i AS id, i AS v, {mk(1, 'i')} AS attrs FROM ({self.ids(1000)}) ids")
+        cand = self.create("bsv_c_map", f"SELECT id, CASE WHEN id = 5 THEN v + 1 ELSE v END AS v, "
+                                        f"{mk_rev(1, 'id')} AS attrs FROM {self.q(base)}")
+        d = self.sentry.diff(base, cand, keys=["id"], table=base)
+        ok = d.error is None and (d.added_rows, d.removed_rows, d.changed_rows) == (0, 0, 1) and not d.not_compared
+        return ScenarioResult("map_column", "a MAP column rewritten in a different key order, plus 1 real change",
+                              "the diff runs; exactly 1 changed (the map is equal)",
+                              f"changed={d.changed_rows}, not compared={list(d.not_compared) or 'none'}"
+                              + (f", error={d.error}" if d.error else ""), ok)
 
     def exact_totals(self) -> ScenarioResult:
         base = self.create("bsv_exact", f"SELECT i AS id, CAST(0.10 AS DECIMAL(18, 2)) AS amount "

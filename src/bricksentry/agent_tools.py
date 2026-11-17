@@ -12,6 +12,7 @@ from __future__ import annotations
 import functools
 from typing import Annotated, Any
 
+from bricksentry import agent_view
 from bricksentry.assess import Sentry
 from bricksentry.explain import explain_diff as _explain_diff
 
@@ -51,7 +52,7 @@ def _safe(fn):
             line = text.splitlines()[0] if text else ""
             if len(line) > 300:
                 line = line[:297] + "..."
-            return {"error": f"{type(e).__name__}: {line}"}
+            return {"error": agent_view.redact_values(f"{type(e).__name__}: {line}")}
 
     return wrapper
 
@@ -127,8 +128,13 @@ def assess_change(
     notify, rule_hits, tables: [{table, verdict, summary, diff, downstream,
     changed_columns, column_tags, column_downstream,
     rollback}]}. Pass `id` to safe_to_ship (and optionally explain_diff)."""
-    a = get_sentry().assess(list(tables), candidates=candidates, pr=pr)
-    return a.to_dict()
+    s = get_sentry()
+    tables = list(tables)
+    _gate(s, "assess_change", tables)
+    a = s.assess(tables, candidates=candidates, pr=pr)
+    out = agent_view.for_agent(a, s)
+    agent_view.audit(s, "assess_change", tables, out)
+    return out
 
 
 @_safe
@@ -155,7 +161,13 @@ def preview_write(
 
     Returns the same shape as assess_change (with an `id` for safe_to_ship), or
     {error} if the statement is refused or fails."""
-    return get_sentry().preview_write(sql, target, keys=keys)
+    s = get_sentry()
+    _gate(s, "preview_write", [target])
+    raw = s.preview_write(sql, target, keys=keys)
+    a = s.get_assessment(raw["id"])
+    out = agent_view.for_agent(a, s, {"preview": raw.get("preview")}) if a else agent_view.scrub(raw)
+    agent_view.audit(s, "preview_write", [target], out)
+    return out
 
 
 @_safe
@@ -181,12 +193,14 @@ def explain_diff(
         a = s.get_assessment(assessment_id)
         if a is None:
             return {"error": f"unknown assessment id {assessment_id}"}
-        return {"assessment_id": a.id, "explanations": {t.table: t.summary for t in a.tables}}
+        safe = agent_view.for_agent(a, s)
+        return {"assessment_id": a.id, "explanations": {t["table"]: t["summary"] for t in safe["tables"]}}
     if table:
         d = s.get_diff(table)
         if d is None:
             return {"error": f"no diff for {table} yet; call assess_change or preview_write first"}
-        return {"table": table, "explanation": _explain_diff(d, s.config.spec(table).measures)}
+        return {"table": table,
+                "explanation": _explain_diff(d, s.config.spec(table).measures, for_agent=True)}
     return {"error": "pass assessment_id or table"}
 
 
@@ -221,7 +235,7 @@ def safe_to_ship(
         "safe_to_ship": v in ("pass", "warn"),
         "verdict": v,
         "risk_tier": a.verdict.risk_tier,
-        "rule_hits": [h.to_dict() for h in a.hits],
+        "rule_hits": agent_view.scrub([h.to_dict() for h in a.hits], "rule_hits"),
         "notify": a.notify,
         "next_step": next_step,
     }
@@ -248,6 +262,14 @@ def rollback_plan(
         "current_version": version,
         "rollback_sql": s.rollback_plan(table),
     }
+
+
+def _gate(s: Sentry, tool: str, tables: list[str]) -> None:
+    try:
+        agent_view.check_allowed(s, tables)
+    except PermissionError as e:
+        agent_view.audit(s, tool, tables, refused=str(e))
+        raise
 
 
 def _not_found(table: str) -> str:

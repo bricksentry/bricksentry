@@ -68,7 +68,7 @@ def test_total_moving_from_zero_fires():
                        candidate_sum=5.0)
     assert col.sum_moved_from_zero
     verdict, hits = p.evaluate("t", _diff_with(col), [], {})
-    assert verdict.value == "block" and "0 -> 5" in hits[0].reason
+    assert verdict.value == "block" and "sum(amount) moved from 0" in hits[0].reason
     still = ColumnChange(column="amount", changed_rows=0, base_nulls=0, candidate_nulls=0, base_sum=0.0,
                          candidate_sum=0.0)
     assert p.evaluate("t", _diff_with(still), [], {})[0].value == "pass"

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+A safety release. A live round of leak, data-shape and race tests on 0.1.26 found four problems; two could mislead.
+
+- **Agents never get production values.** `preview_write` returned up to 5 before→after values per changed column, so an agent with no access to a table could "update" chosen rows and read their old values (SSNs, salaries) back, because bricksentry does the reading. Every agent tool (MCP and `bricksentry.agent_tools`) now returns counts, columns, schema, null counts, percentages and verdicts, never values: no example values on either side (an agent can copy a value into the "new" side), no absolute totals (a total over one row is the value; percentages are rounded to one decimal), no segment values, and quoted values are removed from engine errors. Humans keep the detail in the CLI, Python API and reports, except values in `pii`-tagged tables and columns, which reports never show. Rule reasons no longer contain totals ("sum(amount) moved from 0").
+- **`agent_tables`** in bricksentry.yml lists the tables agents may assess or preview (globs, any case); others are refused. Counts alone can still be probed (`DELETE ... WHERE ssn LIKE '1%'`), which only limiting tables can stop. Every agent `assess_change` / `preview_write` is logged to `bricksentry.audit` and `audit.jsonl` in the assessment store. The README has a table of what each tool can reveal.
+- **Every diff reads one consistent version of each table.** The diff runs several queries; a table rewritten between them mixed two states (a candidate replaced mid-diff gave changed=49 when the old state had 5 and the new 50). Both tables are now pinned to their Delta version at the start (`VERSION AS OF`, schema included), and a candidate that changes during the check gets `needs_human` ("changed-during-check"). Objects that can't time travel are checked before and after.
+- **MAP columns no longer fail the whole diff.** Spark can't compare or hash maps, so one MAP column gave `diff-failed`. Maps are compared by their entries sorted by key (equal maps written in another order are equal); maps nested in structs or arrays as JSON. A column the engine still can't compare is left out with a note and the check asks a human (`columns-not-compared`), instead of losing the diff.
+- **Float rounding.** FLOAT/DOUBLE stay exact by default, but a column that changed everywhere while its total stayed the same gets a note that it's likely rounding. New opt-in `float_tolerance` (relative, e.g. `1e-9`); NaN, infinity and NULL still compare exactly; DECIMAL is always exact.
+- **Key names match case-insensitively** (`keys: [ID]` finds `id`), like the engine.
+- New validation scenarios `agent_sees_no_values` and `map_column` (the battery is now 14).
+
 ## 0.1.26 (2026-11-17)
 
 Fixes for what two worst-case live tests of 0.1.25 on Databricks found. A pre-release check passed on two Databricks Free Edition workspaces (47 of 47 on the first), including the 12-scenario validation battery and before/after repros of every fix.

@@ -34,12 +34,21 @@ class DuckDBBackend(Backend):
     def string_type(self) -> str:
         return "VARCHAR"
 
-    def row_checksum(self, columns: list[str]) -> str | None:
-        cols = ", ".join(self.quote(c) for c in columns)
-        return f"SUM(CAST(hash({cols}) AS HUGEINT))"
+    def row_checksum(self, columns: list[str], types: dict[str, str] | None = None) -> str | None:
+        return f"SUM(CAST({self.row_hash(columns, types)} AS HUGEINT))"
 
-    def row_hash(self, columns: list[str]) -> str | None:
-        return f"hash({', '.join(self.quote(c) for c in columns)})"
+    def row_hash(self, columns: list[str], types: dict[str, str] | None = None) -> str | None:
+        types = types or {}
+        return f"hash({', '.join(self.canon(self.quote(c), types.get(c, '')) for c in columns)})"
+
+    def canon(self, expr: str, type_name: str) -> str:
+        # Maps compare in insertion order; compare their entries sorted by key instead.
+        t = (type_name or "").lower()
+        if t.startswith("map("):
+            return f"list_sort(map_entries({expr}))"
+        if "map(" in t:
+            return f"CAST({expr} AS VARCHAR)"
+        return expr
 
     def sample_predicate(self, keys: list[str], pct: float, alias: str | None = None) -> str:
         pre = f"{alias}." if alias else ""

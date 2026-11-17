@@ -106,8 +106,11 @@ def _verdict(value: Any, where: str) -> Verdict:
         raise PolicyError(f"Policy {where}: {value!r} is not a verdict. Use one of: {valid}.") from None
 
 
-def _sum_move(c: Any) -> str:
+def _sum_move(c: Any, values: bool = True) -> str:
+    """``sum(col) 0 -> 5`` or ``sum(col) +3.10%``. ``values=False`` never shows a total."""
     if c.sum_moved_from_zero:
+        if not values:
+            return f"sum({c.column}) moved from 0"
         return f"sum({c.column}) {_num(c.base_sum or 0)} -> {_num(c.candidate_sum)}"
     return f"sum({c.column}) {c.sum_change_pct:+.2f}%"
 
@@ -162,6 +165,19 @@ class Policy:
                                 columns or ColumnContext())
             if ok:
                 hits.append(RuleHit(rule=r.get("name", "unnamed"), verdict=_verdict(r.get("then", "warn"), "then"), table=table, reason=reason))
+        moved = diff.moved_during_check if diff is not None else []
+        if "candidate" in moved or "unpinned" in moved:
+            # Built in, not a policy rule: a result about a candidate that has since been
+            # replaced, or numbers read across two versions, can't approve what will ship.
+            hits.append(RuleHit(
+                rule="changed-during-check", verdict=Verdict.NEEDS_HUMAN, table=table,
+                reason=("a table changed while it was being checked and couldn't be pinned to one version; re-run"
+                        if "unpinned" in moved else
+                        "the candidate table got a new version while it was being checked; re-run")))
+        if diff is not None and diff.not_compared:
+            hits.append(RuleHit(rule="columns-not-compared", verdict=Verdict.NEEDS_HUMAN, table=table,
+                                reason="couldn't compare " + ", ".join(diff.not_compared)
+                                + "; changes there can't be seen"))
         verdict = Verdict.worst([self.default] + [h.verdict for h in hits])
         return verdict, hits
 
@@ -320,7 +336,7 @@ def _match(
             m = [c for c in cols if c.sum_moved_from_zero or abs(c.sum_change_pct) > float(val)]
             if not m:
                 return False, ""
-            reasons.append(", ".join(_sum_move(c) for c in m[:3]))
+            reasons.append(", ".join(_sum_move(c, values=False) for c in m[:3]))
             continue
         if cond == "null_increase_gt":
             col = when.get("column")

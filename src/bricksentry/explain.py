@@ -6,6 +6,8 @@ but the verdict never depends on it.
 
 from __future__ import annotations
 
+import re
+
 from bricksentry.measures import is_measure
 from bricksentry.models import ImpactNode, TableDiff
 
@@ -14,9 +16,12 @@ def _n(x: int) -> str:
     return f"{x:,}"
 
 
-def explain_diff(d: TableDiff, measures: list[str] | str | None = None) -> str:
+def explain_diff(d: TableDiff, measures: list[str] | str | None = None, for_agent: bool = False) -> str:
+    """Plain-English summary of a diff. ``for_agent=True`` leaves out every data value
+    (totals, segment values, engine text in quotes): counts, columns and percentages only."""
     if d.error:
-        return f"{d.table}: the diff could not run ({d.error})."
+        err = redact_values(d.error) if for_agent else d.error
+        return f"{d.table}: the diff could not run ({err})."
     if d.is_identical:
         scope = f" in a {d.sampled_pct:g}% sample" if d.sampled_pct else ""
         return f"{d.table}: no data or schema changes{scope}."
@@ -56,7 +61,7 @@ def explain_diff(d: TableDiff, measures: list[str] | str | None = None) -> str:
     if moved:
         from bricksentry.policy import _sum_move
 
-        s += ". Totals: " + ", ".join(_sum_move(c) for c in moved[:3])
+        s += ". Totals: " + ", ".join(_sum_move(c, values=not for_agent) for c in moved[:3])
 
     nulls = [
         c for c in d.columns
@@ -73,7 +78,10 @@ def explain_diff(d: TableDiff, measures: list[str] | str | None = None) -> str:
         for col, segs in by_col.items():
             lead = segs[0]
             share = lead.affected_rows / total * 100
-            if share >= 50:
+            if for_agent:
+                s += (f". {share:.0f}% of affected rows share one {col} value" if share >= 50
+                      else f". Spread across {len(segs)} {col} values")
+            elif share >= 50:
                 s += f". {share:.0f}% of affected rows are {col} = {lead.value}"
             else:
                 s += f". Spread across {col}: " + ", ".join(f"{x.value} ({_n(x.affected_rows)})" for x in segs[:3])
@@ -116,3 +124,13 @@ def explain_columns(cols, note: str | None = None) -> str:
     if note:
         parts.append(note[:1].upper() + note[1:])
     return (" " + ". ".join(parts) + ".") if parts else ""
+
+
+_QUOTED = re.compile(r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"")
+
+
+def redact_values(text: str) -> str:
+    """Hide quoted literals in engine text, e.g. ``The value '123-45-6789' cannot be cast``
+    or DuckDB's ``Casting value "1975308.64"``: engines quote data values in single or
+    double quotes. Backticked names stay. Some type names in double quotes go too."""
+    return _QUOTED.sub("'…'", text)

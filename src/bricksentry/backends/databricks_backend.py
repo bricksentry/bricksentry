@@ -105,12 +105,24 @@ class DatabricksBackend(Backend):
     def quote(self, ident: str) -> str:
         return "`" + ident.replace("`", "``") + "`"
 
-    def row_checksum(self, columns: list[str]) -> str | None:
-        cols = ", ".join(self.quote(c) for c in columns)
-        return f"SUM(CAST(xxhash64({cols}) AS DECIMAL(38, 0)))"
+    def row_checksum(self, columns: list[str], types: dict[str, str] | None = None) -> str | None:
+        return f"SUM(CAST({self.row_hash(columns, types)} AS DECIMAL(38, 0)))"
 
-    def row_hash(self, columns: list[str]) -> str | None:
-        return f"xxhash64({', '.join(self.quote(c) for c in columns)})"
+    def row_hash(self, columns: list[str], types: dict[str, str] | None = None) -> str | None:
+        types = types or {}
+        return f"xxhash64({', '.join(self.canon(self.quote(c), types.get(c, '')) for c in columns)})"
+
+    def canon(self, expr: str, type_name: str) -> str:
+        # Spark can't compare or hash MAP values. Compare a map as its entries sorted by
+        # key, as JSON (to_json alone keeps insertion order, so equal maps could differ).
+        # Maps nested in structs or arrays are compared as JSON: equal maps written in a
+        # different order may show as changed (over-reports, never hides a change).
+        t = (type_name or "").lower()
+        if t.startswith("map<"):
+            return f"to_json(array_sort(map_entries({expr})))"
+        if "map<" in t:
+            return f"to_json({expr})"
+        return expr
 
     def sample_predicate(self, keys: list[str], pct: float, alias: str | None = None) -> str:
         pre = f"{alias}." if alias else ""
@@ -134,6 +146,22 @@ class DatabricksBackend(Backend):
         self.execute(
             f"CREATE OR REPLACE TABLE {self.qualified(target)} SHALLOW CLONE {self.qualified(source)}"
         )
+
+    def columns_at(self, table: str, version: int | None) -> dict[str, str]:
+        if version is None:
+            return self.columns(table)
+        try:
+            rows = self.query(f"DESCRIBE QUERY SELECT * FROM {self.at_version(table, version)}")
+        except Exception:
+            return self.columns(table)
+        out = {(r.get("col_name") or "").strip(): str(r.get("data_type", "")).lower() for r in rows}
+        out.pop("", None)
+        return out or self.columns(table)
+
+    def at_version(self, table: str, version: int | None) -> str:
+        if version is None:
+            return self.qualified(table)
+        return f"{self.qualified(table)} VERSION AS OF {int(version)}"
 
     def current_version(self, table: str) -> int | None:
         try:

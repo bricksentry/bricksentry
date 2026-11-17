@@ -41,7 +41,7 @@ DEFAULT_CONFIG_NAMES = ("bricksentry.yml", "bricksentry.yaml", ".bricksentry.yml
 
 TOP_LEVEL_KEYS = {
     "backend", "sandbox_schema", "candidate_pattern", "sample_pct", "sample_guard",
-    "assessment_store", "max_samples", "lineage", "tables", "policy", "notify",
+    "assessment_store", "max_samples", "lineage", "tables", "policy", "notify", "agent_tables", "float_tolerance",
 }
 TABLE_KEYS = {"keys", "key", "segment_by", "paths", "candidate", "measures"}
 NOTIFY_KEYS = {"on", "slack_webhook", "teams_webhook", "mentions", "run_url"}
@@ -50,6 +50,28 @@ LINEAGE_KEYS = {
     "exclude", "exclude_dropped", "edges", "owners", "tags",
     "column_depth", "column_lineage_table", "column_tags_table", "column_edges", "column_tags",
 }
+
+
+def _agent_tables(v: Any) -> list[str] | None:
+    if v is None:
+        return None
+    if isinstance(v, str):
+        v = [v]
+    if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+        raise ValueError("agent_tables must be a list of table names or patterns, e.g. ['main.sales_dev.*']")
+    return list(v)
+
+
+def _tolerance(v: Any) -> float | None:
+    if v in (None, False, 0):
+        return None
+    try:
+        t = float(v)
+    except (TypeError, ValueError):
+        raise ValueError(f"float_tolerance must be a number like 1e-9, not {v!r}") from None
+    if not 0 < t < 1:
+        raise ValueError(f"float_tolerance must be between 0 and 1 (a relative tolerance like 1e-9), not {v!r}")
+    return t
 
 
 def _unknown(where: str, given: Any, known: set[str]) -> list[str]:
@@ -137,6 +159,8 @@ class Config:
     tables: dict[str, TableSpec] = field(default_factory=dict)
     policy: dict[str, Any] | None = None
     notify: dict[str, Any] = field(default_factory=dict)
+    agent_tables: list[str] | None = None  # tables an agent may assess or preview (globs); None = all
+    float_tolerance: float | None = None  # opt-in relative tolerance for FLOAT/DOUBLE compares
     root: Path = field(default_factory=Path.cwd)
     warnings: list[str] = field(default_factory=list)
 
@@ -180,6 +204,8 @@ class Config:
             tables=tables,
             policy=policy,
             notify=_notify(data.get("notify")),
+            agent_tables=_agent_tables(data.get("agent_tables")),
+            float_tolerance=_tolerance(data.get("float_tolerance")),
             root=root,
             warnings=config_warnings(data),
         )
