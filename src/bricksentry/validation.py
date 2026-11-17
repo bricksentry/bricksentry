@@ -158,7 +158,7 @@ class _Validation:
         out = []
         for fn in (self.row_loss, self.bad_merge, self.everything_wrong, self.hidden_in_sample,
                    self.certified_totals_default, self.certified_totals_strict, self.null_keys,
-                   self.null_keys_changed,
+                   self.null_keys_changed, self.pii_noop,
                    self.exact_totals, self.landed_change, self.typo_table):
             t0 = time.time()
             try:
@@ -264,6 +264,20 @@ class _Validation:
         return ScenarioResult("null_keys_changed", "2 of 2,000 rows sharing a NULL key get a new value",
                               "exactly 2 changed; the other copies still match",
                               f"changed={d.changed_rows}, added={d.added_rows}, removed={d.removed_rows}", ok)
+
+    def pii_noop(self) -> ScenarioResult:
+        same = self.create("bsv_c_pii_same", f"SELECT * FROM {self.q(self.emp)}")
+        a = self.assess(self.emp, same)
+        one = self.create("bsv_c_pii_one", f"SELECT emp_id, department, CASE WHEN emp_id = 1 "
+                                           f"THEN CAST(salary + 1 AS DECIMAL(12, 2)) ELSE salary END AS salary, email "
+                                           f"FROM {self.q(self.emp)}")
+        b = self.assess(self.emp, one)
+        rules = {h.rule for h in b.hits}
+        ok = (a.verdict == Verdict.PASS and b.verdict == Verdict.NEEDS_HUMAN
+              and {"pii-table", "certified-downstream"} <= rules)
+        return ScenarioResult("pii_noop", "a PII table feeding a certified mart: an identical rebuild, then a 1-row salary edit",
+                              "identical: pass; 1 row changed: needs_human (pii-table, certified-downstream)",
+                              f"identical: {a.verdict.value}; 1 row: {b.verdict.value} {sorted(rules)}", ok)
 
     def exact_totals(self) -> ScenarioResult:
         base = self.create("bsv_exact", f"SELECT i AS id, CAST(0.10 AS DECIMAL(18, 2)) AS amount "

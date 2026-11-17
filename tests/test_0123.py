@@ -221,6 +221,6 @@ def test_validation_battery_passes_on_duckdb(backend):
     assert by["hidden_in_sample"].passed and by["certified_totals_default"].actual.startswith("warn")
     lines = []
     print_results(results, out=lines.append)
-    assert lines[-1].startswith("9 passed, 0 failed, 2 skipped")
+    assert lines[-1].startswith("10 passed, 0 failed, 2 skipped")
     left = backend.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'bsv_test'")
     assert left == []  # everything it made is dropped

@@ -16,7 +16,7 @@ never from an LLM, so agents and CI get the same answer for the same change.
         when: {column_removed: true}
         then: needs_human
       - name: certified-downstream
-        when: {downstream_tag: certified}
+        when: {downstream_tag: certified, any_change: true}
         then: needs_human
       - name: big-row-loss
         when: {removed_pct_gt: 1}
@@ -58,8 +58,8 @@ DEFAULT_POLICY: dict[str, Any] = {
         {"name": "null-keys", "when": {"null_keys": True}, "then": "warn"},
         {"name": "dropped-column", "when": {"column_removed": True}, "then": "needs_human"},
         {"name": "type-change", "when": {"column_type_changed": True}, "then": "warn"},
-        {"name": "certified-downstream", "when": {"downstream_tag": "certified"}, "then": "needs_human"},
-        {"name": "pii-table", "when": {"tag": "pii"}, "then": "needs_human"},
+        {"name": "certified-downstream", "when": {"downstream_tag": "certified", "any_change": True}, "then": "needs_human"},
+        {"name": "pii-table", "when": {"tag": "pii", "any_change": True}, "then": "needs_human"},
         {"name": "pii-column-changed", "when": {"changed_column_tag": "pii"}, "then": "needs_human"},
         {"name": "row-loss", "when": {"removed_pct_gt": 1}, "then": "needs_human"},
         {"name": "many-rows-changed", "when": {"changed_pct_gt": 10}, "then": "warn"},
@@ -251,13 +251,18 @@ def _match(
             reasons.append(f"{len(downstream)} downstream assets")
             continue
 
+        if cond == "any_change":
+            # No diff (it failed or never ran) can't prove nothing changed, so it counts
+            # as a change: a gate with any_change never passes silently on a missing diff.
+            changed = True if diff is None else not diff.is_identical
+            if changed != bool(val):
+                return False, ""
+            if diff is None:
+                reasons.append("no diff, so a change can't be ruled out")
+            continue
         # Everything below needs a diff.
         if diff is None:
             return False, ""
-        if cond == "any_change":
-            if diff.is_identical == bool(val):
-                return False, ""
-            continue
         if cond == "duplicate_keys":
             dup = diff.duplicate_keys_candidate > diff.duplicate_keys_base
             if dup != bool(val):

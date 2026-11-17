@@ -9,10 +9,9 @@ from bricksentry.report import MARKER, to_markdown
 def test_clean_change_passes_but_flags_dashboard(sentry, backend):
     backend.execute("CREATE TABLE sales_ci.orders AS SELECT * FROM sales.orders")
     a = sentry.assess(["sales.orders"])
-    # identical data: certified downstream still requires a human by default policy
-    assert a.verdict == Verdict.NEEDS_HUMAN
-    assert {h.rule for h in a.hits} == {"certified-downstream"}
-    assert a.notify == ["finance-team", "sales-eng"]
+    # identical data: nothing changed, so the certified-downstream gate stays quiet (0.1.26)
+    assert a.verdict == Verdict.PASS
+    assert a.hits == []
 
 
 def test_duplicate_keys_block(sentry, backend):

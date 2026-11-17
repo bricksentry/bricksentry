@@ -1,7 +1,7 @@
 # Validation
 
 What bricksentry has been tested against on real Databricks, release by release, with the numbers. It includes the
-results that weren't perfect and every bug the live tests found. The unit tests (251, run on every push) use DuckDB
+results that weren't perfect and every bug the live tests found. The unit tests (253, run on every push) use DuckDB
 and a mocked Databricks SDK; this page is about the live runs.
 
 **Run it yourself.** The [validation notebook](examples/databricks/bricksentry_validation.py) runs the same risky
@@ -135,6 +135,7 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 | Worst-case rounds of 0.1.25 | A column total going from 0 to 5 didn't fire `sum_change_pct_gt` (no percentage from zero) | 0.1.26 |
 | Worst-case rounds of 0.1.25 | A `DECIMAL(38)` total overflowing failed the whole diff | 0.1.26 |
 | Worst-case rounds of 0.1.25 | The rollback warning ignored newer non-data changes (RENAME COLUMN, SET TBLPROPERTIES) that a `RESTORE` also undoes | 0.1.26 |
+| Worst-case rounds of 0.1.25 | The default `pii-table` and `certified-downstream` rules asked a human on a pull request that changed nothing (noise that trains reviewers to ignore the gate) | 0.1.26 |
 | Worst-case rounds of 0.1.25 | A verdict typo gave a bare `ValueError`; `policy: strict` was read as a file path; an empty policy silently passed everything; `preview_write` showed the engine's full error | 0.1.26 |
 | This battery, Nov 16 | A sampled diff skipped the full-table check when the schema had also changed, so changed values in a retyped column outside the sample could go uncounted (the verdict still flagged the type change) | 0.1.25 |
 | User-path test of 0.1.23 | A mistyped table name printed the engine's full error, including an unrelated hint about dropping views | 0.1.24 |

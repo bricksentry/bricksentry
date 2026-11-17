@@ -121,3 +121,29 @@ def test_preview_write_failure_is_one_line(sentry, backend):
     msg = str(e.value)
     assert msg.startswith("The statement failed on the preview clone, so production was not touched:")
     assert "\n" not in msg
+
+
+# --- (i) pii / certified gates ignore no-op changes, but nothing else ------------
+def test_noop_change_to_certified_feeder_passes_and_a_real_one_does_not(sentry, backend):
+    backend.execute("CREATE TABLE sales_ci.orders AS SELECT * FROM sales.orders")
+    assert sentry.assess(["sales.orders"]).verdict.value == "pass"
+    backend.execute("DROP TABLE sales_ci.orders")
+    backend.execute("CREATE TABLE sales_ci.orders AS SELECT * FROM sales.orders")
+    backend.execute("UPDATE sales_ci.orders SET amount = amount + 1 WHERE order_id = (SELECT MIN(order_id) FROM sales_ci.orders)")
+    a = sentry.assess(["sales.orders"])
+    hit = next(h for h in a.hits if h.rule == "certified-downstream")
+    assert a.verdict.value == "needs_human" and "tagged certified" in hit.reason
+
+
+def test_pii_gate_names_the_tag_and_fires_on_schema_only_and_missing_diff():
+    p = Policy()
+    no_rows = TableDiff(table="t", base="b", candidate="c", keys=["id"], base_rows=1, candidate_rows=1,
+                        added_rows=0, removed_rows=0, changed_rows=0, unchanged_rows=1, schema=SchemaChange())
+    assert p.evaluate("t", no_rows, [], {"pii": "true"})[0].value == "pass"
+    no_rows.schema = SchemaChange(removed={"email": "string"})
+    v, hits = p.evaluate("t", no_rows, [], {"pii": "true"})
+    assert v.value == "needs_human" and any(h.rule == "pii-table" and "table is tagged pii" in h.reason for h in hits)
+    # No diff at all can't prove nothing changed: the gate still fires.
+    custom = Policy({"rules": [{"name": "pii", "when": {"tag": "pii", "any_change": True}, "then": "needs_human"}]})
+    v, hits = custom.evaluate("t", None, [], {"pii": "true"}, diff_error="boom")
+    assert v.value == "needs_human" and "can't be ruled out" in hits[0].reason
