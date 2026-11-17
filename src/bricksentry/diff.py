@@ -47,7 +47,10 @@ def diff_tables(
     """
     d = _diff(backend, base, candidate, keys, table=table, sample_pct=sample_pct,
               segment_by=segment_by, max_samples=max_samples, columns=columns)
-    if not (sample_pct and sample_guard and d.is_identical):
+    # Re-check the whole table whenever the sample shows no row changes, even if the
+    # schema changed: a retyped column can still hide changed values outside the sample.
+    rows_look_unchanged = d.added_rows == 0 and d.removed_rows == 0 and d.changed_rows == 0
+    if not (sample_pct and sample_guard and rows_look_unchanged):
         return d
     cols = list(d.keys) + [c.column for c in d.columns]
     full = _full_fingerprints(backend, base, candidate, cols)
@@ -56,7 +59,7 @@ def diff_tables(
     full_d = _diff(backend, base, candidate, keys, table=table, sample_pct=None,
                    segment_by=segment_by, max_samples=max_samples, columns=columns)
     full_d.sample_note = (
-        f"The {sample_pct:g}% sample showed no changes, but the full tables differ, "
+        f"The {sample_pct:g}% sample showed no row changes, but the full tables differ, "
         "so the diff was re-run on all rows."
     )
     return full_d

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Validation you can reproduce.** `VALIDATION.md` records every live test on Databricks with its numbers, the results that weren't perfect and the bugs each test found. `bricksentry.validation.run_validation()` and the new notebook `examples/databricks/bricksentry_validation.py` run the same ten risky changes on your own workspace in a scratch schema and drop everything afterwards. A new issue form, "Validation report", collects results from other setups.
+- Fix: a sampled diff (`sample_pct`) skipped the full-table check when the schema had also changed, so changed values in a retyped column outside the sample could go uncounted. The verdict still flagged the type change. The check now runs whenever the sample shows no row changes. Found by the new validation battery.
+
 ## 0.1.24 (2026-11-16)
 
 Small fixes from two adversarial live tests of 0.1.23 on Databricks, including the job task running inside a real Databricks job.

@@ -193,3 +193,34 @@ def test_job_main_exits_without_the_ipython_exit_hint(monkeypatch):
         warnings.warn("To exit: use 'exit', 'quit', or Ctrl-D.", UserWarning, stacklevel=2)  # IPython's hint
     assert e.value.code == 1
     assert not [w for w in caught if "To exit" in str(w.message)]
+
+
+# --- the sample guard also runs when only the schema changed ----------------------
+def test_sample_guard_runs_when_a_retyped_column_hides_changes(backend):
+    pred = backend.sample_predicate(["order_id"], 5)
+    outside = [r["order_id"] for r in backend.query(
+        f"SELECT order_id FROM sales.orders WHERE NOT ({pred}) ORDER BY order_id LIMIT 3")]
+    ids = ", ".join(map(str, outside))
+    # amount becomes VARCHAR (a schema change) and 3 values outside the sample change.
+    backend.execute(f"CREATE TABLE sales_ci.orders AS SELECT order_id, region, CAST(CASE WHEN order_id IN ({ids}) "
+                    f"THEN amount * 5 ELSE amount END AS VARCHAR) AS amount, status FROM sales.orders")
+    d = diff_tables(backend, "sales.orders", "sales_ci.orders", ["order_id"], sample_pct=5)
+    assert "amount" in d.schema.type_changed
+    assert d.changed_rows == 3 and d.sample_note and "re-run on all rows" in d.sample_note
+
+
+# --- the published validation battery -------------------------------------------
+def test_validation_battery_passes_on_duckdb(backend):
+    from bricksentry.validation import print_results, run_validation
+
+    results = run_validation(backend, "bsv_test", rows=5000, exact_rows=100_000)
+    by = {r.name: r for r in results}
+    failed = [r.to_dict() for r in results if r.passed is False]
+    assert not failed, failed
+    assert {n for n, r in by.items() if r.passed is None} == {"landed_change", "typo_table"}  # need Delta
+    assert by["hidden_in_sample"].passed and by["certified_totals_default"].actual.startswith("warn")
+    lines = []
+    print_results(results, out=lines.append)
+    assert lines[-1].startswith("8 passed, 0 failed, 2 skipped")
+    left = backend.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'bsv_test'")
+    assert left == []  # everything it made is dropped

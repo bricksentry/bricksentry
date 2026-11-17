@@ -15,6 +15,7 @@ SOURCES = [
     ROOT / "examples" / "databricks" / "bricksentry_quickstart.py",
     ROOT / "examples" / "databricks" / "bricksentry_check_my_table.py",
     ROOT / "examples" / "databricks" / "bricksentry_hr_walkthrough.py",
+    ROOT / "examples" / "databricks" / "bricksentry_validation.py",
 ]
 SRC = SOURCES[0]
 OUT = SRC.with_suffix(".ipynb")

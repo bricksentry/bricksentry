@@ -8,7 +8,7 @@
 
 Change-safety for Databricks pipelines and the AI agents that edit them: know what a change does to your data before it ships.
 
-**[Try it in 30 seconds](#1-try-it-in-30-seconds-on-your-laptop)** · **[Check every change on Databricks](#2-check-every-change-to-your-tables-on-databricks)** · **[Docs: bricksentry.org](https://bricksentry.org)** · **[LinkedIn](https://www.linkedin.com/company/bricksentry-org/)**
+**[Try it in 30 seconds](#1-try-it-in-30-seconds-on-your-laptop)** · **[Check every change on Databricks](#2-check-every-change-to-your-tables-on-databricks)** · **[Docs: bricksentry.org](https://bricksentry.org)** · **[Validated live: what we tested and found](VALIDATION.md)** · **[LinkedIn](https://www.linkedin.com/company/bricksentry-org/)**
 
 Built by Brahmareddy, Databricks Champion. Open source under Apache-2.0.
 
@@ -414,7 +414,7 @@ Every assessment records when it ran (UTC), the bricksentry version, a SHA-256 f
 - **Lineage is recorded at runtime.** Brand-new tables have no downstream history yet. Unity Catalog doesn't capture RDD operations, and UDFs hide column-level mapping; column lineage records source-to-target derivations, so a column used only in a filter or join may not appear.
 - **Keys are required.** Tables without a stable key can't be diffed row by row yet (an aggregate-profile mode is planned).
 - **Changed-table detection uses path globs** from config. It doesn't parse Asset Bundles yet.
-- **Validated on Databricks** (serverless, November 2026): a 2-million-row table with 0.1.4 (lineage, rollback plans, previews on shallow clones, every verdict level, the sampling guard catching a single changed row), then live runs of every release up to 0.1.23 on a Free Edition workspace with an HR pipeline: pull-request gating with comment updates, the bundle demo job, `check-last-change` and the newer-changes warning in the CLI, report, JSON and Slack, the refused-statement guards, outbound-URL checks, one-to-one matching of 2,000 NULL keys, exact totals over a million decimal rows, the audit trail, an AI agent attempting six risky changes on the live pipeline, and the job task blocking a bad MERGE inside a real Databricks job. The automated tests use DuckDB and a mocked SDK, so please [open an issue](https://github.com/bricksentry/bricksentry/issues) if something behaves differently on yours.
+- **Validated on Databricks** (serverless, November 2026): a 2-million-row table with 0.1.4 (lineage, rollback plans, previews on shallow clones, every verdict level, the sampling guard catching a single changed row), then live runs of every release up to 0.1.23 on a Free Edition workspace with an HR pipeline: pull-request gating with comment updates, the bundle demo job, `check-last-change` and the newer-changes warning in the CLI, report, JSON and Slack, the refused-statement guards, outbound-URL checks, one-to-one matching of 2,000 NULL keys, exact totals over a million decimal rows, the audit trail, an AI agent attempting six risky changes on the live pipeline, and the job task blocking a bad MERGE inside a real Databricks job. Every run, with its numbers and the bugs it found, is in [VALIDATION.md](VALIDATION.md). The automated tests use DuckDB and a mocked SDK, so please run the [validation notebook](examples/databricks/bricksentry_validation.py) on your workspace and [share a validation report](https://github.com/bricksentry/bricksentry/issues/new?template=validation_report.yml), whether it passes or not.
 
 ## Roadmap
 

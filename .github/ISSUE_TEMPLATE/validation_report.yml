@@ -1,0 +1,75 @@
+name: Validation report
+description: Ran the validation notebook (or your own risky-change tests)? Share the results so others can see where bricksentry has been checked.
+title: "[validation] "
+labels: [validation-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for checking bricksentry on your own setup. Results from other clouds, classic compute and bigger tables
+        are the most useful, **including failures**. Accepted reports are added to
+        [VALIDATION.md](https://github.com/bricksentry/bricksentry/blob/main/VALIDATION.md) with credit if you'd like it.
+
+        Please **leave out anything private**: workspace URLs, warehouse IDs, emails and internal table names.
+  - type: input
+    id: version
+    attributes:
+      label: bricksentry version
+      placeholder: "0.1.24 (bricksentry.__version__)"
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: What did you run?
+      options:
+        - The validation notebook (examples/databricks/bricksentry_validation.py)
+        - My own scenarios
+        - Both
+    validations:
+      required: true
+  - type: dropdown
+    id: cloud
+    attributes:
+      label: Cloud
+      options: [AWS, Azure, GCP, Databricks Free Edition, Not Databricks (DuckDB / local)]
+    validations:
+      required: true
+  - type: dropdown
+    id: compute
+    attributes:
+      label: Compute
+      options: [Serverless SQL warehouse, Pro SQL warehouse, Classic SQL warehouse, Other]
+  - type: input
+    id: size
+    attributes:
+      label: Largest table checked (rows)
+      placeholder: "200,000 (the notebook default), or your own"
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Result
+      options:
+        - Everything passed
+        - Some scenarios failed
+        - It failed to run
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: Results table
+      description: Paste the table from the notebook's last cells (scenario, result, actual, seconds), or describe your own scenarios.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything surprising?
+      description: Slow steps, confusing messages, verdicts you'd have expected differently.
+  - type: input
+    id: credit
+    attributes:
+      label: Credit in VALIDATION.md (optional)
+      placeholder: "Your name or GitHub handle, or leave empty to stay anonymous"
