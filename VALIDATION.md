@@ -35,6 +35,8 @@ Please share what you see, especially from other clouds, classic compute and big
 
 ## Pre-release checks of 0.1.29 (November 17, 2026): views and SQL functions
 
+**Release smoke test from PyPI:** the published 0.1.29 carries both checks; the battery passed 15 of 15 on Databricks (265 s) and 13 with 2 Delta-only skips on DuckDB; production untouched. Known and harmless: on serverless, the query-plan second opinion doesn't read MERGE source names from compact plans; the parser checks those sources, so nothing depends on it.
+
 Round 10 found no parser bypass, so 0.1.29 added a check against Spark's own query plan for what a parser can't see. Genie's check of that build found the plan check couldn't see inside views or functions on serverless either: a listed view over the forbidden table, or a SQL function reading it, still ran (values hidden, counts exposed; 0.1.28 has the same gap). The fix reads view definitions and function bodies from Unity Catalog and holds every table inside to `agent_tables`. A second check then found the plan check, as a hard gate, refused legitimate agent MERGEs because serverless plan formats vary, so it became a second opinion that never blocks on a plan it can't read.
 
 | Check on the release code | Result |
