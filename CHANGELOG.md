@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **The engine's own query plan must agree with `agent_tables`.** On Databricks, before an agent's preview runs, bricksentry runs `EXPLAIN EXTENDED` on the statement (planning only, nothing runs) and checks every table Spark resolved. This catches what a SQL parser can't see: a table read inside a SQL function (`SET x = get_ssn()`), a view over an unlisted table, or syntax the parser reads differently from Spark. A plan that can't be read, or that doesn't contain the target, means the preview is refused. A view counts as reading its source tables. Round 10 found no parser bypass in 13 attempts; this closes the class of attack rather than one trick at a time.
+- **Faster pinned diffs.** Reading the schema at the pinned version now doubles as the time-travel probe, and only the candidate's version is re-checked afterwards (a pinned base can't affect the result), so each diff runs three fewer metadata queries. A base that moves during the check is no longer noted, because its pinned reads are unaffected.
 - bricksentry is now in **public beta**: the package is marked Beta, and the README says what you can rely on during the beta and what may still change before 1.0.
 
 ## 0.1.28 (2026-11-17)

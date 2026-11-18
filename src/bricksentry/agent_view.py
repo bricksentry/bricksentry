@@ -226,6 +226,35 @@ def check_statement(sentry: Sentry, sql: str) -> None:
     check_allowed(sentry, tables_read(sql, dialect))
 
 
+def check_plan(sentry: Sentry, sql: str, target: str) -> None:
+    """Second, independent check: ask the engine which tables its own plan reads
+    (``EXPLAIN``), so SQL functions, views and any syntax the parser reads differently
+    can't reach an unlisted table. Fails closed if the plan can't be read."""
+    if sentry.config.agent_tables is None:
+        return
+    try:
+        names = sentry.backend.plan_tables(sql)
+    except Exception as e:
+        raise PermissionError(
+            f"Couldn't confirm which tables the statement reads from the engine's query plan, so it's refused for "
+            f"agents: {redact_values(str(e).strip().splitlines()[0][:200] if str(e).strip() else type(e).__name__)}"
+        ) from None
+    if names is None:  # no plan to check on this engine (DuckDB): the parser check stands alone
+        return
+    if not names or not any(_same(n, target) for n in names):
+        raise PermissionError(
+            "Couldn't confirm which tables the statement reads from the engine's query plan (the target wasn't in "
+            "it), so it's refused for agents."
+        )
+    check_allowed(sentry, [n for n in names if not _same(n, target)] + [target])
+
+
+def _same(a: str, b: str) -> bool:
+    """Same table: equal names, or one ends with the other (``spark_catalog.s.t`` vs ``s.t``)."""
+    a, b = a.lower(), b.lower()
+    return a == b or a.endswith("." + b) or b.endswith("." + a)
+
+
 def check_allowed(sentry: Sentry, tables: list[str]) -> None:
     refused = [t for t in tables if not allowed(sentry, t)]
     if refused:

@@ -50,7 +50,18 @@ def diff_tables(
     # version: a table rewritten while the diff runs must not mix two states into one
     # result. Tables without versions (views, DuckDB) are read as they are.
     seen = {base: backend.current_version(base), candidate: backend.current_version(candidate)}
-    pins = {t: (v if v is not None and _can_time_travel(backend, t, v) else None) for t, v in seen.items()}
+    # Reading the schema at the pinned version doubles as the "can it time travel?"
+    # probe (one query, not two); objects that refuse VERSION AS OF are read unpinned.
+    pins: dict[str, int | None] = {}
+    known_cols: dict[str, dict[str, str]] = {}
+    for t, v in seen.items():
+        pins[t] = None
+        if v is not None:
+            try:
+                known_cols[t] = backend.columns_at(t, v, strict=True)
+                pins[t] = v
+            except Exception:
+                pass
     # Column masks and row filters (Unity Catalog) change what bricksentry's identity
     # reads: a masked column can look unchanged while every value changed, and a row
     # filter hides rows from the counts. Neither can be verified, so both are reported.
@@ -59,7 +70,7 @@ def diff_tables(
     filtered = [role for role, t in (("base", base), ("candidate", candidate)) if prot.get(t, {}).get("row_filter")]
     d = _diff(backend, base, candidate, keys, table=table, sample_pct=sample_pct,
               segment_by=segment_by, max_samples=max_samples, columns=columns, pins=pins,
-              float_tolerance=float_tolerance, masked=masked)
+              float_tolerance=float_tolerance, masked=masked, known_cols=known_cols)
     if filtered:
         d.row_filtered = filtered
         d.notes.append(
@@ -68,23 +79,15 @@ def diff_tables(
         )
     d = _finish(backend, d, base, candidate, keys, pins, table=table, sample_pct=sample_pct,
                 segment_by=segment_by, max_samples=max_samples, columns=columns, sample_guard=sample_guard,
-                float_tolerance=float_tolerance)
+                float_tolerance=float_tolerance, masked=masked, known_cols=known_cols)
     _note_moves(backend, d, base, candidate, seen, pins)
     return d
 
 
-def _can_time_travel(backend: Backend, table: str, version: int) -> bool:
-    """Some objects have a history but refuse VERSION AS OF (e.g. materialized views):
-    read those as they are and rely on the before/after version check instead."""
-    try:
-        backend.query(f"SELECT 1 AS ok FROM {backend.at_version(table, version)} LIMIT 0")
-        return True
-    except Exception:
-        return False
 
 
 def _finish(backend, d, base, candidate, keys, pins, *, table, sample_pct, segment_by, max_samples, columns,
-            sample_guard, float_tolerance, masked=None):
+            sample_guard, float_tolerance, masked=None, known_cols=None):
     # Re-check the whole table whenever the sample shows no row changes, even if the
     # schema changed: a retyped column can still hide changed values outside the sample.
     rows_look_unchanged = d.added_rows == 0 and d.removed_rows == 0 and d.changed_rows == 0
@@ -92,14 +95,14 @@ def _finish(backend, d, base, candidate, keys, pins, *, table, sample_pct, segme
         return d
     cols = list(d.keys) + [c.column for c in d.columns]
     try:
-        full = _full_fingerprints(backend, base, candidate, cols, pins)
+        full = _full_fingerprints(backend, base, candidate, cols, pins, (known_cols or {}).get(base))
     except Exception:  # can't checksum the whole table: compare every row instead
         full = ("unknown", "different")
     if full is None or full[0] == full[1]:
         return d
     full_d = _diff(backend, base, candidate, keys, table=table, sample_pct=None,
                    segment_by=segment_by, max_samples=max_samples, columns=columns, pins=pins,
-                   float_tolerance=float_tolerance, masked=masked)
+                   float_tolerance=float_tolerance, masked=masked, known_cols=known_cols)
     full_d.sample_note = (
         f"The {sample_pct:g}% sample showed no row changes, but the full tables differ, "
         "so the diff was re-run on all rows."
@@ -115,6 +118,8 @@ def _note_moves(backend: Backend, d: TableDiff, base: str, candidate: str, seen:
         v = seen.get(tbl)
         if v is None:
             continue
+        if role == "base" and pins.get(tbl) is not None:
+            continue  # a pinned base can move freely: every query read its pinned version
         now = backend.current_version(tbl)
         if now is not None and now != v:
             d.moved_during_check.append(role)
@@ -131,9 +136,10 @@ def _note_moves(backend: Backend, d: TableDiff, base: str, candidate: str, seen:
         d.pinned_versions = {"base": pins.get(base), "candidate": pins.get(candidate)}
 
 
-def _full_fingerprints(backend: Backend, base: str, candidate: str, cols: list[str], pins: dict | None = None):
+def _full_fingerprints(backend: Backend, base: str, candidate: str, cols: list[str], pins: dict | None = None,
+                       types: dict[str, str] | None = None):
     """(rows, checksum) for each table over all rows, or None if unsupported."""
-    agg = backend.row_checksum(cols, backend.columns_at(base, (pins or {}).get(base)))
+    agg = backend.row_checksum(cols, types or backend.columns_at(base, (pins or {}).get(base)))
     if agg is None:
         return None
 
@@ -158,6 +164,7 @@ def _diff(
     pins: dict | None = None,
     float_tolerance: float | None = None,
     masked: dict[str, str] | None = None,
+    known_cols: dict[str, dict[str, str]] | None = None,
 ) -> TableDiff:
     if not keys:
         raise DiffError(
@@ -170,8 +177,9 @@ def _diff(
     def ref(tbl: str) -> str:
         return backend.at_version(tbl, pins.get(tbl))
 
-    b_cols = backend.columns_at(base, pins.get(base))
-    c_cols = backend.columns_at(candidate, pins.get(candidate))
+    known_cols = known_cols or {}
+    b_cols = known_cols.get(base) or backend.columns_at(base, pins.get(base))
+    c_cols = known_cols.get(candidate) or backend.columns_at(candidate, pins.get(candidate))
 
     keys = [_resolve(k, b_cols) for k in keys]  # `ID` finds `id`, as the engine would
     missing = [k for k in keys if k not in b_cols or _resolve(k, c_cols) not in c_cols]

@@ -7,6 +7,7 @@ OAuth, Azure/GCP identity...). Nothing in bricksentry handles credentials itself
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Any
 
@@ -147,6 +148,14 @@ class DatabricksBackend(Backend):
             f"CREATE OR REPLACE TABLE {self.qualified(target)} SHALLOW CLONE {self.qualified(source)}"
         )
 
+    def plan_tables(self, sql: str) -> list[str] | None:
+        # EXPLAIN EXTENDED plans the statement without running it. The analyzed plan names
+        # every relation Spark resolved, including inside SQL functions and views, which
+        # no SQL parser can see. Planning errors come back as text, not exceptions.
+        rows = self.query(f"EXPLAIN EXTENDED {sql}")
+        text = "\n".join(str(v) for r in rows for v in r.values() if v is not None)
+        return parse_plan_tables(text)
+
     def protections(self, tables: list[str]) -> dict[str, dict[str, Any]]:
         # Unity Catalog lists masks and row filters in each catalog's information_schema.
         # One query per catalog. If it can't be read (no UC, no access), say nothing:
@@ -182,15 +191,19 @@ class DatabricksBackend(Backend):
     def _lit(v: str) -> str:
         return "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-    def columns_at(self, table: str, version: int | None) -> dict[str, str]:
+    def columns_at(self, table: str, version: int | None, strict: bool = False) -> dict[str, str]:
         if version is None:
             return self.columns(table)
         try:
             rows = self.query(f"DESCRIBE QUERY SELECT * FROM {self.at_version(table, version)}")
         except Exception:
+            if strict:
+                raise
             return self.columns(table)
         out = {(r.get("col_name") or "").strip(): str(r.get("data_type", "")).lower() for r in rows}
         out.pop("", None)
+        if not out and strict:
+            raise RuntimeError(f"no columns for {table} at version {version}")
         return out or self.columns(table)
 
     def at_version(self, table: str, version: int | None) -> str:
@@ -275,3 +288,32 @@ def _convert(v: Any, t: str) -> Any:
     except (TypeError, ValueError):
         return v
     return v
+
+
+class PlanError(RuntimeError):
+    pass
+
+
+_PLAN_NAMES = [
+    re.compile(r"\bRelation\s+([^\s\[]+)\["),
+    re.compile(r"\bSubqueryAlias\s+([^\s]+)"),
+    re.compile(r"\bView\s+\(\s*`?([^,`)]+)`?\s*,"),
+]
+
+
+def parse_plan_tables(text: str) -> list[str]:
+    """Table names (two or more parts) from Spark's EXPLAIN EXTENDED output, analyzed plan first."""
+    low = text.lower()
+    if "error occurred during query planning" in low or "analysisexception" in low or "== analyzed logical plan ==" not in low:
+        first = next((ln.strip() for ln in text.splitlines() if "error" in ln.lower()), "no analyzed plan")
+        raise PlanError(f"Spark couldn't plan the statement ({first[:200]})")
+    start = low.index("== analyzed logical plan ==")
+    end = low.find("== optimized logical plan ==", start)
+    section = text[start:end if end > 0 else None]
+    out: list[str] = []
+    for rx in _PLAN_NAMES:
+        for m in rx.finditer(section):
+            name = m.group(1).replace("`", "").strip().rstrip(",")
+            if name.count(".") >= 1 and name.lower() not in [o.lower() for o in out]:
+                out.append(name)
+    return out

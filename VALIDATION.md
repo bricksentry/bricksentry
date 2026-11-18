@@ -1,7 +1,7 @@
 # Validation
 
 What bricksentry has been tested against on real Databricks, release by release, with the numbers. It includes the
-results that weren't perfect and every bug the live tests found. The unit tests (294, run on every push) use DuckDB
+results that weren't perfect and every bug the live tests found. The unit tests (305, run on every push) use DuckDB
 and a mocked Databricks SDK; this page is about the live runs.
 
 **Run it yourself.** The [validation notebook](examples/databricks/bricksentry_validation.py) runs the same risky

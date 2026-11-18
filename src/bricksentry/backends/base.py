@@ -39,13 +39,19 @@ class Backend(ABC):
     def qualified(self, table: str) -> str:
         return ".".join(self.quote(p) for p in table.split("."))
 
+    def plan_tables(self, sql: str) -> list[str] | None:
+        """Every table the engine's own query plan for ``sql`` reads, without running it.
+        ``None`` when the engine offers no plan to check (DuckDB)."""
+        return None
+
     def protections(self, tables: list[str]) -> dict[str, dict[str, Any]]:
         """Column masks and row filters per table: ``{table: {"masked": [cols], "row_filter": bool}}``.
         Engines without them return nothing."""
         return {}
 
-    def columns_at(self, table: str, version: int | None) -> dict[str, str]:
-        """Like :meth:`columns`, for ``table`` at ``version``."""
+    def columns_at(self, table: str, version: int | None, strict: bool = False) -> dict[str, str]:
+        """Like :meth:`columns`, for ``table`` at ``version``. With ``strict``, raise if the
+        version can't be read (engines without time travel just read the table)."""
         return self.columns(table)
 
     def canon(self, expr: str, type_name: str) -> str:

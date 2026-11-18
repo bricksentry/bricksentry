@@ -168,6 +168,7 @@ def preview_write(
     # Every table the statement reads must be allowed too (a subquery, MERGE USING, a
     # join or a CTE could otherwise turn the counts into facts about a forbidden table).
     _gate_sql(s, "preview_write", [target], sql.replace("{{target}}", target))
+    _gate_plan(s, "preview_write", target, sql.replace("{{target}}", target))
     raw = s.preview_write(sql, target, keys=keys)
     a = s.get_assessment(raw["id"])
     out = agent_view.for_agent(a, s, {"preview": raw.get("preview")}) if a else agent_view.scrub(raw)
@@ -278,6 +279,14 @@ def _gate_sql(s: Sentry, tool: str, tables: list[str], sql: str) -> None:
         agent_view.check_statement(s, sql)
     except PermissionError as e:
         agent_view.audit(s, tool, tables, refused=str(e))
+        raise
+
+
+def _gate_plan(s: Sentry, tool: str, target: str, sql: str) -> None:
+    try:
+        agent_view.check_plan(s, sql, target)
+    except PermissionError as e:
+        agent_view.audit(s, tool, [target], refused=str(e))
         raise
 
 

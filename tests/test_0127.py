@@ -129,7 +129,7 @@ class Versioned(DuckDBBackend):
         v = self.versions.get(table)
         return super().columns(f"{table}__v{v}" if v is not None else table)
 
-    def columns_at(self, table, version):
+    def columns_at(self, table, version, strict=False):
         return super().columns(f"{table}__v{version}") if version is not None else self.columns(table)
 
     def query(self, sql):
@@ -168,7 +168,7 @@ def test_candidate_replaced_mid_diff_gives_pinned_result_and_needs_human():
     assert v.value == "needs_human" and "changed-during-check" in {h.rule for h in hits}
 
 
-def test_base_moving_mid_diff_is_noted_only():
+def test_base_moving_mid_diff_cant_change_a_pinned_result():
     b = Versioned()
     b.execute("CREATE SCHEMA p")
     b.write("p.base", "SELECT i AS id, i AS v FROM range(1, 101) t(i)")
@@ -176,7 +176,7 @@ def test_base_moving_mid_diff_is_noted_only():
     b.queries = 0
     b.on_query = lambda n: b.write("p.base", "SELECT 1 AS id, 1 AS v") if n == 2 else None
     d = diff_tables(b, "p.base", "p.cand", ["id"])
-    assert d.is_identical is True and d.moved_during_check == ["base"]
+    assert d.is_identical is True and d.moved_during_check == []  # pinned: the move can't affect the result
 
 
 def test_databricks_reads_at_version():
