@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.29 (2026-11-17)
+
+Closes the last known way around `agent_tables`, and bricksentry enters public beta. Verified on Databricks before release: every view and function attack refused (a view over a forbidden table, a view over that view, a function with and without a schema, a view as candidate), legitimate views, functions, MERGE, UPDATE and INSERT previews ran with exact counts, and the 15-scenario battery passed 15 of 15.
 
 - **Views and SQL functions are held to `agent_tables`.** A listed view over an unlisted table, or a SQL function whose body reads one (`SET x = get_secret()`), let an agent's preview read that table and learn its row counts (values stayed hidden). bricksentry now reads every view's definition and every user function's body from Unity Catalog (`system.information_schema.views` and `.routines`) and checks the tables inside, recursively; an unqualified function name is matched in every schema. A definition that can't be read, or a catalog that can't be read, means the preview is refused. Found in the pre-release check of the plan check below, which can't see inside views or functions on serverless.
 - **A second opinion from the engine's query plan.** On Databricks, before an agent's preview runs, bricksentry also runs `EXPLAIN EXTENDED` (planning only); if the plan names a table that isn't in `agent_tables`, the preview is refused. Plan formats vary on serverless (compact plans; tables inside views and functions aren't shown), so a plan that can't be read doesn't block a preview: the parser and the view and function definitions are the boundary. Found in the pre-release check: a hard plan gate refused legitimate agent MERGEs.

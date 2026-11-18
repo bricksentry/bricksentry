@@ -1,7 +1,7 @@
 # Validation
 
 What bricksentry has been tested against on real Databricks, release by release, with the numbers. It includes the
-results that weren't perfect and every bug the live tests found. The unit tests (315, run on every push) use DuckDB
+results that weren't perfect and every bug the live tests found. The unit tests (316, run on every push) use DuckDB
 and a mocked Databricks SDK; this page is about the live runs.
 
 **Run it yourself.** The [validation notebook](examples/databricks/bricksentry_validation.py) runs the same risky
@@ -32,6 +32,21 @@ Please share what you see, especially from other clouds, classic compute and big
   scratch schema; the scratch schema is dropped at the end, and the run confirms that the production tables kept their
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
+
+## Pre-release checks of 0.1.29 (November 17, 2026): views and SQL functions
+
+Round 10 found no parser bypass, so 0.1.29 added a check against Spark's own query plan for what a parser can't see. Genie's check of that build found the plan check couldn't see inside views or functions on serverless either: a listed view over the forbidden table, or a SQL function reading it, still ran (values hidden, counts exposed; 0.1.28 has the same gap). The fix reads view definitions and function bodies from Unity Catalog and holds every table inside to `agent_tables`. A second check then found the plan check, as a hard gate, refused legitimate agent MERGEs because serverless plan formats vary, so it became a second opinion that never blocks on a plan it can't read.
+
+| Check on the release code | Result |
+|---|---|
+| A listed view over the forbidden table | refused, naming it |
+| A view over that view | refused |
+| A SQL function reading it, with and without a schema | refused |
+| A listed view over it as the candidate in `assess_change` | refused |
+| A view or function over allowed tables | ran, no over-blocking |
+| A MERGE with a listed source, a plain UPDATE, an INSERT ... SELECT from listed tables | ran with exact counts |
+| Validation battery | 15 of 15 on Databricks; 13 passed, 2 skipped on DuckDB |
+| Production | untouched |
 
 ## Round 10 on 0.1.28 (November 17, 2026): bypassing the allowlist through SQL the parser misreads
 
@@ -205,6 +220,7 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
+| Pre-release check of 0.1.29 | As a hard gate, the query-plan check refused legitimate agent MERGEs (serverless plan formats vary) | 0.1.29 (made a second opinion) |
 | Pre-release check of 0.1.29 | A listed view over an unlisted table, or a SQL function reading one, let an agent learn that table's row counts (also in 0.1.28); serverless query plans don't show tables inside views or functions | 0.1.29 |
 | Round 9 on 0.1.27 | `agent_tables` checked only the target: a forbidden table read in a subquery, MERGE, INSERT ... SELECT, or named as the candidate, leaked its row counts to agents (values stayed hidden) | 0.1.28 |
 | Round 9 on 0.1.27 | A masked column with 50 real changes diffed as unchanged and passed | 0.1.28 |
