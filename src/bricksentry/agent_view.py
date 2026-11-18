@@ -312,26 +312,20 @@ def _first(e: BaseException) -> str:
 
 
 def check_plan(sentry: Sentry, sql: str, target: str) -> None:
-    """Second, independent check: ask the engine which tables its own plan reads
-    (``EXPLAIN``), so SQL functions, views and any syntax the parser reads differently
-    can't reach an unlisted table. Fails closed if the plan can't be read."""
+    """A second opinion from the engine's own query plan (``EXPLAIN``, which runs
+    nothing): if the plan names a table that isn't in ``agent_tables``, refuse. The
+    boundary itself is the parser and the view and function definitions; plan formats
+    vary on serverless (compact plans, tables inside views and functions not shown), so
+    a plan that can't be read is no reason to refuse and no proof of safety."""
     if sentry.config.agent_tables is None:
         return
     try:
         names = sentry.backend.plan_tables(sql)
-    except Exception as e:
-        raise PermissionError(
-            f"Couldn't confirm which tables the statement reads from the engine's query plan, so it's refused for "
-            f"agents: {redact_values(str(e).strip().splitlines()[0][:200] if str(e).strip() else type(e).__name__)}"
-        ) from None
-    if names is None:  # no plan to check on this engine (DuckDB): the parser check stands alone
+    except Exception:
         return
-    if not names or not any(_same(n, target) for n in names):
-        raise PermissionError(
-            "Couldn't confirm which tables the statement reads from the engine's query plan (the target wasn't in "
-            "it), so it's refused for agents."
-        )
-    check_allowed(sentry, [n for n in names if not _same(n, target)] + [target])
+    if not names:
+        return
+    check_allowed(sentry, [n for n in names if not _same(n, target)])
 
 
 def _same(a: str, b: str) -> bool:

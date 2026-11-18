@@ -332,6 +332,8 @@ class PlanError(RuntimeError):
 
 
 _PLAN_NAMES = [
+    # serverless "Edge" plans print fully quoted names: `catalog`.`schema`.`table`
+    re.compile(r"(`[^`]+`\.`[^`]+`(?:\.`[^`]+`)?)"),
     re.compile(r"\bRelation\s+([^\s\[]+)\["),
     re.compile(r"\bSubqueryAlias\s+([^\s]+)"),
     re.compile(r"\bView\s+\(\s*`?([^,`)]+)`?\s*,"),
