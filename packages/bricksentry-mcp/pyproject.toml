@@ -12,7 +12,7 @@ license = "Apache-2.0"
 authors = [{ name = "Brahma" }]
 keywords = ["mcp", "databricks", "ai-agents", "data-quality", "unity-catalog", "delta-lake"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Programming Language :: Python :: 3",
   "Topic :: Database",
   "Operating System :: OS Independent",
