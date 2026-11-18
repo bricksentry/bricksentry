@@ -39,6 +39,16 @@ class Backend(ABC):
     def qualified(self, table: str) -> str:
         return ".".join(self.quote(p) for p in table.split("."))
 
+    def view_definitions(self, tables: list[str]) -> dict[str, tuple[str | None, str | None, str | None]]:
+        """For the names that are views: ``{name: (definition SQL, catalog, schema)}``.
+        Tables aren't listed. Raises if the catalog can't be read."""
+        return {}
+
+    def function_bodies(self, names: list[str]) -> list[tuple[str, str | None, str, str | None, str | None]]:
+        """User functions matching ``names`` (an unqualified name matches any schema):
+        ``[(full name, body, language, catalog, schema)]``. Built-ins aren't listed."""
+        return []
+
     def plan_tables(self, sql: str) -> list[str] | None:
         """Every table the engine's own query plan for ``sql`` reads, without running it.
         ``None`` when the engine offers no plan to check (DuckDB)."""

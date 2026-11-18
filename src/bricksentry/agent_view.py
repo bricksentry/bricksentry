@@ -179,7 +179,11 @@ def allowed(sentry: Sentry, table: str) -> bool:
 
 
 def tables_read(sql: str, dialect: str) -> list[str]:
-    """Every table a statement touches, as written (``catalog.schema.table``), via a real
+    return statement_refs(sql, dialect)[0]
+
+
+def statement_refs(sql: str, dialect: str) -> tuple[list[str], list[str]]:
+    """Tables and user functions a statement uses. Every table a statement touches, as written (``catalog.schema.table``), via a real
     SQL parser. Raises PermissionError for anything that can't be checked by name:
     unparseable SQL, table functions (``table_changes(...)``, ``read_files(...)``,
     ``IDENTIFIER(...)``) and path-based tables (``delta.`/path```)."""
@@ -213,7 +217,16 @@ def tables_read(sql: str, dialect: str) -> list[str]:
         if "/" in name or ":" in name:
             raise PermissionError(f"Path-based tables ({name}) are refused for agents. Use a Unity Catalog table name.")
         out.append(name)
-    return out
+    funcs: list[str] = []
+    for a in tree.find_all(exp.Anonymous):  # functions sqlglot doesn't know: possibly UDFs
+        parts, p = [a.name], a.parent
+        while isinstance(p, exp.Dot):
+            parts.insert(0, p.this.sql(dialect=dialect).replace("`", ""))
+            p = p.parent
+        name = ".".join(parts)
+        if name.lower() not in [f.lower() for f in funcs]:
+            funcs.append(name)
+    return out, funcs
 
 
 def check_statement(sentry: Sentry, sql: str) -> None:
@@ -222,8 +235,80 @@ def check_statement(sentry: Sentry, sql: str) -> None:
     doesn't match: write the full name."""
     if sentry.config.agent_tables is None:
         return
-    dialect = "duckdb" if getattr(sentry.backend, "name", "") == "duckdb" else "databricks"
-    check_allowed(sentry, tables_read(sql, dialect))
+    tables, funcs = statement_refs(sql, _dialect(sentry))
+    check_allowed(sentry, tables)
+    check_definitions(sentry, tables, funcs)
+
+
+def _dialect(sentry: Sentry) -> str:
+    return "duckdb" if getattr(sentry.backend, "name", "") == "duckdb" else "databricks"
+
+
+_MAX_DEPTH = 5
+
+
+def check_definitions(sentry: Sentry, tables: list[str], funcs: list[str], depth: int = 0) -> None:
+    """Views and SQL functions read tables the statement doesn't name. Read their
+    definitions from the catalog and hold every table inside to ``agent_tables`` too,
+    recursively (a view over a view, a function calling a function). A definition that
+    can't be read is refused. The engine's query plan can't be relied on for this:
+    serverless plans don't show tables inside views or functions."""
+    if sentry.config.agent_tables is None or (not tables and not funcs):
+        return
+    if depth > _MAX_DEPTH:
+        raise PermissionError("Views or functions nest too deeply to check, so the statement is refused for agents.")
+    try:
+        views = sentry.backend.view_definitions(tables) if tables else {}
+        bodies = sentry.backend.function_bodies(funcs) if funcs else []
+    except Exception as e:
+        raise PermissionError(
+            "Couldn't read view and function definitions from the catalog to check what they read, so the "
+            f"statement is refused for agents ({_first(e)})."
+        ) from None
+    for name, (definition, cat, schema) in views.items():
+        if not definition:
+            raise PermissionError(f"Can't read the definition of view {name} to check which tables it reads, so it's "
+                                  "refused for agents.")
+        inner, inner_funcs = _refs_of_body(sentry, definition, f"view {name}")
+        inner = [_qualify(t, cat, schema) for t in inner]
+        check_allowed(sentry, inner)
+        check_definitions(sentry, inner, inner_funcs, depth + 1)
+    for name, body, language, cat, schema in bodies:
+        if str(language).upper() != "SQL":
+            continue  # Python and other external functions can't query tables
+        if not body:
+            raise PermissionError(f"Can't read the body of function {name} to check which tables it reads, so it's "
+                                  "refused for agents.")
+        inner, inner_funcs = _refs_of_body(sentry, body, f"function {name}")
+        inner = [_qualify(t, cat, schema) for t in inner]
+        check_allowed(sentry, inner)
+        check_definitions(sentry, inner, inner_funcs, depth + 1)
+
+
+def _refs_of_body(sentry: Sentry, text: str, what: str) -> tuple[list[str], list[str]]:
+    d = _dialect(sentry)
+    for candidate in (text, f"SELECT {text}"):  # a view is a query; a function body may be an expression
+        try:
+            return statement_refs(candidate, d)
+        except PermissionError as e:
+            if "parse" not in str(e).lower():
+                raise
+    raise PermissionError(f"Couldn't parse the {what} to check which tables it reads, so it's refused for agents.")
+
+
+def _qualify(name: str, catalog: str | None, schema: str | None) -> str:
+    """Names inside a view or function resolve against its own catalog and schema."""
+    parts = name.split(".")
+    if len(parts) == 1 and schema:
+        parts = [schema] + parts
+    if len(parts) == 2 and catalog:
+        parts = [catalog] + parts
+    return ".".join(parts)
+
+
+def _first(e: BaseException) -> str:
+    t = str(e).strip()
+    return redact_values(t.splitlines()[0][:200]) if t else type(e).__name__
 
 
 def check_plan(sentry: Sentry, sql: str, target: str) -> None:

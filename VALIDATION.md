@@ -1,7 +1,7 @@
 # Validation
 
 What bricksentry has been tested against on real Databricks, release by release, with the numbers. It includes the
-results that weren't perfect and every bug the live tests found. The unit tests (305, run on every push) use DuckDB
+results that weren't perfect and every bug the live tests found. The unit tests (315, run on every push) use DuckDB
 and a mocked Databricks SDK; this page is about the live runs.
 
 **Run it yourself.** The [validation notebook](examples/databricks/bricksentry_validation.py) runs the same risky
@@ -205,6 +205,7 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
+| Pre-release check of 0.1.29 | A listed view over an unlisted table, or a SQL function reading one, let an agent learn that table's row counts (also in 0.1.28); serverless query plans don't show tables inside views or functions | 0.1.29 |
 | Round 9 on 0.1.27 | `agent_tables` checked only the target: a forbidden table read in a subquery, MERGE, INSERT ... SELECT, or named as the candidate, leaked its row counts to agents (values stayed hidden) | 0.1.28 |
 | Round 9 on 0.1.27 | A masked column with 50 real changes diffed as unchanged and passed | 0.1.28 |
 | Round 9 on 0.1.27 | The MCP server over HTTP had no authentication when bound beyond localhost | 0.1.28 |

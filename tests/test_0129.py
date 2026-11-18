@@ -152,3 +152,80 @@ def test_pinning_needs_three_version_reads_and_no_probe_query():
     assert d.is_identical and d.pinned_versions == {"base": 3, "candidate": 3}
     assert b.version_reads == 3  # both at the start, then only the candidate after
     assert not any("SELECT 1 AS ok" in q for q in b.sql)
+
+
+# --- views and SQL functions: their definitions are held to agent_tables too ------------
+def _vf(backend):
+    backend.execute("CREATE SCHEMA ok; CREATE SCHEMA bad")
+    backend.execute("CREATE TABLE ok.t AS SELECT i AS id, 'x' || i AS ssn FROM range(1, 11) t(i)")
+    backend.execute("CREATE TABLE ok.u AS SELECT i AS id, 'u' || i AS ssn FROM range(1, 11) t(i)")
+    backend.execute("CREATE TABLE bad.secret AS SELECT i AS id, 'SECRET-' || i AS ssn FROM range(1, 11) t(i)")
+    backend.execute("CREATE VIEW ok.v_bad AS SELECT id, ssn FROM bad.secret")
+    backend.execute("CREATE VIEW ok.v_good AS SELECT id, ssn FROM ok.u")
+    backend.execute("CREATE VIEW ok.v_nested AS SELECT * FROM ok.v_bad")
+    backend.execute("CREATE MACRO ok.get_secret() AS (SELECT max(ssn) FROM bad.secret)")
+    backend.execute("CREATE MACRO ok.get_good() AS (SELECT max(ssn) FROM ok.u)")
+    s = Sentry(Config.from_dict({"sandbox_schema": "sandbox", "assessment_store": False,
+                                 "tables": {"ok.t": {"keys": ["id"]}, "ok.v_bad": {"keys": ["id"]}},
+                                 "agent_tables": ["ok.*"]}), backend=backend)
+    agent_tools.set_sentry(s)
+    return s
+
+
+@pytest.mark.parametrize("sql", [
+    "UPDATE {{target}} SET ssn = (SELECT max(ssn) FROM ok.v_bad)",
+    "UPDATE {{target}} SET ssn = (SELECT max(ssn) FROM ok.v_nested)",  # a view over a view
+    "UPDATE {{target}} SET ssn = ok.get_secret()",
+    "UPDATE {{target}} SET ssn = get_secret()",  # unqualified: matched in any schema
+])
+def test_views_and_functions_over_forbidden_tables_are_refused(backend, sql):
+    _vf(backend)
+    out = agent_tools.preview_write(sql, "ok.t")
+    assert out.get("error", "").startswith("PermissionError: Not allowed for agents: bad.secret"), out
+
+
+@pytest.mark.parametrize("sql", [
+    "UPDATE {{target}} SET ssn = (SELECT max(ssn) FROM ok.v_good) WHERE id = 1",
+    "UPDATE {{target}} SET ssn = ok.get_good() WHERE id = 1",
+    "UPDATE {{target}} SET ssn = upper(ssn) WHERE id = 1",  # built-ins aren't looked up
+])
+def test_views_and_functions_over_listed_tables_still_work(backend, sql):
+    _vf(backend)
+    out = agent_tools.preview_write(sql, "ok.t")
+    assert "error" not in out and out["tables"][0]["diff"]["changed_rows"] == 1, out
+
+
+def test_listed_view_as_candidate_over_forbidden_table_is_refused(backend):
+    _vf(backend)
+    out = agent_tools.assess_change(["ok.t"], candidates={"ok.t": "ok.v_bad"})
+    assert out["error"].startswith("PermissionError: Not allowed for agents: bad.secret")
+
+
+class Unreadable(DuckDBBackend):
+    def view_definitions(self, tables):
+        raise RuntimeError("no access to system.information_schema")
+
+
+def test_catalog_that_cant_be_read_fails_closed():
+    b = Unreadable()
+    _vf(b)
+    out = agent_tools.preview_write("UPDATE {{target}} SET ssn = 'z'", "ok.t")
+    assert "Couldn't read view and function definitions" in out.get("error", ""), out
+
+
+def test_databricks_reads_definitions_from_system_information_schema():
+    b = DatabricksBackend(warehouse_id="w", client=object())
+    seen = []
+
+    def q(sql):
+        seen.append(sql)
+        if "information_schema.views" in sql:
+            return [{"table_catalog": "main", "table_schema": "ok", "table_name": "v", "view_definition": "SELECT 1"}]
+        return [{"routine_catalog": "main", "routine_schema": "ok", "routine_name": "f", "routine_body": "SQL",
+                 "routine_definition": "(SELECT 1)"}]
+
+    b.query = q
+    assert b.view_definitions(["main.ok.v", "ok.t"]) == {"main.ok.v": ("SELECT 1", "main", "ok")}
+    assert b.function_bodies(["f"]) == [("main.ok.f", "(SELECT 1)", "SQL", "main", "ok")]
+    assert "system.information_schema.views" in seen[0] and "current_catalog()" in seen[0]
+    assert "lower(routine_name) = 'f'" in seen[1]

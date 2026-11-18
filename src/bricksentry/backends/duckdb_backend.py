@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from bricksentry.backends.base import Backend
@@ -66,3 +67,28 @@ class DuckDBBackend(Backend):
         self.execute(
             f"CREATE OR REPLACE TABLE {self.qualified(target)} AS SELECT * FROM {self.qualified(source)}"
         )
+
+    def view_definitions(self, tables):
+        rows = self.query("SELECT schema_name, view_name, sql FROM duckdb_views() WHERE NOT internal")
+        out = {}
+        for t in tables:
+            parts = [p.strip('"').lower() for p in t.split(".")]
+            schema, name = (parts[-2] if len(parts) >= 2 else "main"), parts[-1]
+            for r in rows:
+                if str(r["schema_name"]).lower() == schema and str(r["view_name"]).lower() == name:
+                    m = re.search(r"\bAS\b\s*(.*)$", r["sql"] or "", re.S | re.I)
+                    out[t] = ((m.group(1).strip().rstrip(";") if m else None), None, r["schema_name"])
+        return out
+
+    def function_bodies(self, names):
+        rows = self.query("SELECT schema_name, function_name, macro_definition FROM duckdb_functions() "
+                          "WHERE function_type IN ('macro', 'table_macro') AND NOT internal")
+        out = []
+        for n in names:
+            parts = n.lower().split(".")
+            for r in rows:
+                if str(r["function_name"]).lower() == parts[-1] and (len(parts) < 2 or str(r["schema_name"]).lower() == parts[-2]):
+                    out.append((f"{r['schema_name']}.{r['function_name']}", r["macro_definition"], "SQL", None,
+                                r["schema_name"]))
+        return out
+

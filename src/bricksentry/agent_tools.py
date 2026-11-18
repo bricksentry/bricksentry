@@ -132,7 +132,9 @@ def assess_change(
     tables = list(tables)
     # Candidates an agent names are checked too: pointing an allowed table's candidate
     # at a forbidden table would otherwise diff the forbidden one.
-    _gate(s, "assess_change", tables + [c for c in (candidates or {}).values() if c])
+    named = tables + [c for c in (candidates or {}).values() if c]
+    _gate(s, "assess_change", named)
+    _gate_views(s, "assess_change", named)  # a listed view over an unlisted table counts as that table
     a = s.assess(tables, candidates=candidates, pr=pr)
     out = agent_view.for_agent(a, s)
     agent_view.audit(s, "assess_change", tables, out)
@@ -277,6 +279,14 @@ def rollback_plan(
 def _gate_sql(s: Sentry, tool: str, tables: list[str], sql: str) -> None:
     try:
         agent_view.check_statement(s, sql)
+    except PermissionError as e:
+        agent_view.audit(s, tool, tables, refused=str(e))
+        raise
+
+
+def _gate_views(s: Sentry, tool: str, tables: list[str]) -> None:
+    try:
+        agent_view.check_definitions(s, tables, [])
     except PermissionError as e:
         agent_view.audit(s, tool, tables, refused=str(e))
         raise

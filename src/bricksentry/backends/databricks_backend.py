@@ -148,6 +148,43 @@ class DatabricksBackend(Backend):
             f"CREATE OR REPLACE TABLE {self.qualified(target)} SHALLOW CLONE {self.qualified(source)}"
         )
 
+    def _name_filter(self, names: list[str], cat_col: str, schema_col: str, name_col: str, loose_single: bool):
+        conds = []
+        for n in names:
+            parts = [p.strip("`").lower() for p in n.split(".")]
+            cat = self._lit(parts[0]) if len(parts) == 3 else "lower(current_catalog())"
+            if len(parts) >= 2:
+                conds.append(f"(lower({cat_col}) = {cat} AND lower({schema_col}) = {self._lit(parts[-2])} "
+                             f"AND lower({name_col}) = {self._lit(parts[-1])})")
+            elif loose_single:  # an unqualified function name: any schema, to be safe
+                conds.append(f"lower({name_col}) = {self._lit(parts[0])}")
+            else:
+                conds.append(f"(lower({cat_col}) = lower(current_catalog()) AND lower({schema_col}) = "
+                             f"lower(current_schema()) AND lower({name_col}) = {self._lit(parts[0])})")
+        return " OR ".join(conds) or "FALSE"
+
+    def view_definitions(self, tables: list[str]) -> dict[str, tuple[str | None, str | None, str | None]]:
+        # system.information_schema covers every catalog the identity can see.
+        where = self._name_filter(tables, "table_catalog", "table_schema", "table_name", loose_single=False)
+        rows = self.query("SELECT table_catalog, table_schema, table_name, view_definition "
+                          f"FROM system.information_schema.views WHERE {where}")
+        out: dict[str, tuple[str | None, str | None, str | None]] = {}
+        for t in tables:
+            parts = [p.strip("`").lower() for p in t.split(".")]
+            for r in rows:
+                got = [str(r.get(k, "")).lower() for k in ("table_catalog", "table_schema", "table_name")]
+                if got[-len(parts):] == parts:
+                    out[t] = (r.get("view_definition"), r.get("table_catalog"), r.get("table_schema"))
+        return out
+
+    def function_bodies(self, names: list[str]) -> list[tuple[str, str | None, str, str | None, str | None]]:
+        where = self._name_filter(names, "routine_catalog", "routine_schema", "routine_name", loose_single=True)
+        rows = self.query("SELECT routine_catalog, routine_schema, routine_name, routine_body, routine_definition "
+                          f"FROM system.information_schema.routines WHERE {where}")
+        return [(f"{r.get('routine_catalog')}.{r.get('routine_schema')}.{r.get('routine_name')}",
+                 r.get("routine_definition"), str(r.get("routine_body") or ""), r.get("routine_catalog"),
+                 r.get("routine_schema")) for r in rows]
+
     def plan_tables(self, sql: str) -> list[str] | None:
         # EXPLAIN EXTENDED plans the statement without running it. The analyzed plan names
         # every relation Spark resolved, including inside SQL functions and views, which
