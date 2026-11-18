@@ -1,12 +1,19 @@
-# Welcome to bricksentry
+# bricksentry
 
 <!-- mcp-name: io.github.bricksentry/bricksentry -->
 
 [![PyPI](https://img.shields.io/pypi/v/bricksentry)](https://pypi.org/project/bricksentry/) [![Python](https://img.shields.io/pypi/pyversions/bricksentry)](https://pypi.org/project/bricksentry/) [![Tests](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml/badge.svg)](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml) [![Lint](https://github.com/bricksentry/bricksentry/actions/workflows/lint.yml/badge.svg)](https://github.com/bricksentry/bricksentry/actions/workflows/lint.yml) [![Coverage](https://img.shields.io/badge/coverage-%E2%89%A575%25%20enforced-brightgreen)](https://github.com/bricksentry/bricksentry/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE) [![Status](https://img.shields.io/badge/status-public%20beta-orange)](#project-status-public-beta)
 
-***The safety check for data changes in the AI era.***
+***See what a data change does before it ships.***
 
-Change-safety for Databricks pipelines and the AI agents that edit them: know what a change does to your data before it ships.
+A pipeline change or an AI agent's MERGE can look right, pass every test and still quietly duplicate or drop rows. bricksentry checks the data itself before the change reaches production: it compares the rows the change would produce with what's there now, shows what's downstream in Unity Catalog lineage, and gives a verdict from your own policy: **pass**, **needs a human**, or **block**.
+
+- **Real data, not a guess.** Agent previews run the statement on a disposable shallow clone; PR checks compare the tables your branch built. Rows added, removed and changed, column by column, exact to the row.
+- **Fails closed.** If something can't be verified (a failed diff, a masked column, a table rewritten mid-check), it asks a human. It never treats "couldn't check" as a pass.
+- **Agents see counts, never values,** and only for the tables you allow, including tables reached through views and SQL functions.
+- **Fits how you work:** a GitHub PR check, a Databricks job task, a CLI, Python, or an MCP server for AI agents (with token auth over the network). Rollback plans come with every verdict.
+
+*Public beta: tested in [ten adversarial rounds](VALIDATION.md), with every finding fixed and published.*
 
 **[Try it in 30 seconds](#1-try-it-in-30-seconds-on-your-laptop)** · **[Check every change on Databricks](#2-check-every-change-to-your-tables-on-databricks)** · **[Docs: bricksentry.org](https://bricksentry.org)** · **[Validated live: what we tested and found](VALIDATION.md)** · **[LinkedIn](https://www.linkedin.com/company/bricksentry-org/)**
 
