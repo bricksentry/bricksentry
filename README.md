@@ -454,7 +454,19 @@ bricksentry is in **public beta** (0.1.x). It has been tested hard but only by i
 
 **What may still change before 1.0:** default policy rules, the wording of reasons and summaries, fields added to JSON output (fields aren't removed or renamed without a changelog note), and defaults such as whether `agent_tables` is required for agents.
 
-**1.0** comes when two or three outside teams have run it on real pipelines for a month without a serious finding, with validation reports from at least two clouds. If you'd like to be one of them, [open an issue](https://github.com/bricksentry/bricksentry/issues) or run the [validation notebook](examples/databricks/bricksentry_validation.py) and [share the report](https://github.com/bricksentry/bricksentry/issues/new?template=validation_report.yml).
+**Before 1.0**, these need proving in environments other than the author's:
+
+| What | How it gets checked |
+|---|---|
+| Separate identities: an agent identity that isn't bricksentry's, and people exempt from column masks | A team with service principals runs the validation notebook under a second identity |
+| Classic compute (clusters and classic SQL warehouses), including its query-plan format | A validation report from classic compute |
+| AWS, Azure and GCP workspaces | Validation reports from at least two clouds |
+| The added time of the query-plan check on each agent preview, with several agents at once | Measured live |
+| Pull-request comments and `--from-git` on the current code | Re-run on a real repository |
+| The MCP server over weeks: long runs and restarts | A team running it day to day |
+| Count probing on listed tables (documented above) | Kept as documented, or an optional per-table limit if users ask for one |
+
+**1.0** comes when those are done and two or three outside teams have run it on real pipelines for a month without a serious finding. If you'd like to be one of them, [open an issue](https://github.com/bricksentry/bricksentry/issues) or run the [validation notebook](examples/databricks/bricksentry_validation.py) and [share the report](https://github.com/bricksentry/bricksentry/issues/new?template=validation_report.yml).
 
 ## Known limits (v0.1.x)
 
