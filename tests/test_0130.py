@@ -42,3 +42,11 @@ def test_other_writes_still_use_the_clone():
     out = s.preview_write("UPDATE {{target}} SET headcount = 0 WHERE department = 'hr'", "hr.gold")
     assert out["tables"][0]["diff"]["changed_rows"] == 1
     assert "_out" not in out["preview"]["executed_sql"]
+
+
+def test_redaction_keeps_punctuation_only_lists():
+    from bricksentry.explain import redact_values as r
+
+    msg = "[DELTA_INVALID_CHARACTERS_IN_COLUMN_NAMES] Found invalid character(s) among ' ,;{}()\\n\\t=' in the column names"
+    assert "' ,;{}()" in r(msg)
+    assert r("The value '123-45-6789' can't be cast") == "The value '…' can't be cast"

@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.30 (2026-11-18)
+
+A patch from the first real use of bricksentry as an assistant's safety gate: an assistant built a Bronze/Silver/Gold HR pipeline, then changed the Gold logic only after `whats_downstream`, `rollback_plan`, `preview_write` and `safe_to_ship`. Verified on Databricks before release: the CTAS preview that failed now runs with exact counts, a CTAS reading the table it replaces works, nothing is left in the sandbox, production stays at its version, and the battery passed 15 of 15.
 
 - **`CREATE OR REPLACE TABLE` previews work on serverless.** The preview replaced the shallow clone itself, which serverless refuses (`CLUSTER BY AUTO is only supported on UC Managed tables`, because new tables get automatic clustering by default). The statement's result now goes into a fresh sandbox table, the clone stays for reading the target (`CREATE OR REPLACE TABLE t AS SELECT ... FROM t`), and both are dropped afterwards. Other writes still run on the clone. Found while an assistant built and changed an HR pipeline with bricksentry as its gate.
+- Agent errors keep quoted text that has no letters or digits, such as Delta's list of characters a column name can't contain (` ,;{}()\n\t=`), so an agent can see it needs a column alias. Quoted values are still hidden.
 
 ## 0.1.29 (2026-11-17)
 

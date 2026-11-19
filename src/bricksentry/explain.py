@@ -134,4 +134,10 @@ def redact_values(text: str) -> str:
     or DuckDB's ``Casting value "1975308.64"``: engines quote data values in single or
     double quotes. Backticked names stay. Some type names in double quotes go too.
     Apostrophes inside words ("can't") aren't quotes and stay."""
-    return _QUOTED.sub("'…'", text)
+    def hide(m: re.Match) -> str:
+        inner = re.sub(r"\\[ntr]", " ", m.group(0)[1:-1])  # escapes like \n count as punctuation
+        # Punctuation and whitespace only (e.g. Delta's list of characters a column name
+        # can't contain) isn't data and tells the agent how to fix the statement.
+        return m.group(0) if inner and not any(ch.isalnum() for ch in inner) else "'…'"
+
+    return _QUOTED.sub(hide, text)

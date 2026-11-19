@@ -1,7 +1,7 @@
 # Validation
 
 What bricksentry has been tested against on real Databricks, release by release, with the numbers. It includes the
-results that weren't perfect and every bug the live tests found. The unit tests (316, run on every push) use DuckDB
+results that weren't perfect and every bug the live tests found. The unit tests (319, run on every push) use DuckDB
 and a mocked Databricks SDK; this page is about the live runs.
 
 **Run it yourself.** The [validation notebook](examples/databricks/bricksentry_validation.py) runs the same risky
@@ -32,6 +32,12 @@ Please share what you see, especially from other clouds, classic compute and big
   scratch schema; the scratch schema is dropped at the end, and the run confirms that the production tables kept their
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
+
+## First use as an assistant's safety gate, and 0.1.30 (November 18, 2026)
+
+Genie built a Bronze/Silver/Gold HR pipeline (50 raw rows with duplicates and invalid salaries, 44 clean, 5 department rows), then changed the Gold logic to count employees on leave as active, calling bricksentry first: `whats_downstream` (no dependents), `rollback_plan` (matched DESCRIBE HISTORY), `preview_write` (verdict `warn`: exactly the 3 departments with employees on leave changed, the headcount total up 11.76%), `safe_to_ship` (true). Only then did it apply the change, and checked the result against Silver independently. The calls went through the Python package in a notebook, not yet through the MCP server deployed as a Databricks app.
+
+It found one bug: previewing `CREATE OR REPLACE TABLE` failed on serverless (`CLUSTER BY AUTO is only supported on UC Managed tables`); the same change written as a MERGE previewed fine. Fixed in 0.1.30 and re-checked: the original CTAS runs, a CTAS that reads the table it replaces runs with the right counts, no values in agent output, the sandbox is empty after every run, the Gold table stayed at its version, and the battery passed 15 of 15 (244 s).
 
 ## Pre-release checks of 0.1.29 (November 17, 2026): views and SQL functions
 
@@ -222,6 +228,7 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
+| First use as an assistant's gate (0.1.29) | Previewing `CREATE OR REPLACE TABLE` failed on serverless (it replaced the shallow clone, which can't take `CLUSTER BY AUTO`) | 0.1.30 |
 | Pre-release check of 0.1.29 | As a hard gate, the query-plan check refused legitimate agent MERGEs (serverless plan formats vary) | 0.1.29 (made a second opinion) |
 | Pre-release check of 0.1.29 | A listed view over an unlisted table, or a SQL function reading one, let an agent learn that table's row counts (also in 0.1.28); serverless query plans don't show tables inside views or functions | 0.1.29 |
 | Round 9 on 0.1.27 | `agent_tables` checked only the target: a forbidden table read in a subquery, MERGE, INSERT ... SELECT, or named as the candidate, leaked its row counts to agents (values stayed hidden) | 0.1.28 |
