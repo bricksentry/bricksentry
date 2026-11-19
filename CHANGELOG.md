@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`CREATE OR REPLACE TABLE` previews work on serverless.** The preview replaced the shallow clone itself, which serverless refuses (`CLUSTER BY AUTO is only supported on UC Managed tables`, because new tables get automatic clustering by default). The statement's result now goes into a fresh sandbox table, the clone stays for reading the target (`CREATE OR REPLACE TABLE t AS SELECT ... FROM t`), and both are dropped afterwards. Other writes still run on the clone. Found while an assistant built and changed an HR pipeline with bricksentry as its gate.
+
 ## 0.1.29 (2026-11-17)
 
 Closes the last known way around `agent_tables`, and bricksentry enters public beta. Verified on Databricks before release: every view and function attack refused (a view over a forbidden table, a view over that view, a function with and without a schema, a view as candidate), legitimate views, functions, MERGE, UPDATE and INSERT previews ran with exact counts, and the 15-scenario battery passed 15 of 15.

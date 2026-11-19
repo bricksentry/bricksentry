@@ -220,6 +220,16 @@ class Sentry:
                 f"Could not clone {target} to preview the write: {_first_line(e)}. Check the table name "
                 f"and that you can create tables in {schema or 'the sandbox schema'}."
             ) from None
+        # CREATE OR REPLACE TABLE writes its result into a fresh sandbox table rather than
+        # replacing the clone: some engines refuse to replace a shallow clone (serverless
+        # applies CLUSTER BY AUTO to new tables, which a clone can't take). The clone stays,
+        # for statements that read the target (CREATE OR REPLACE TABLE t AS SELECT ... FROM t).
+        result = clone
+        m = _REPLACE_HEAD.match(rewritten)
+        if m:
+            result = clone + "_out"
+            rewritten = rewritten[: m.start("name")] + ".".join(
+                self.backend.quote(p) for p in result.split(".")) + rewritten[m.end("name"):]
         try:
             try:
                 self.backend.execute(rewritten)
@@ -227,13 +237,18 @@ class Sentry:
                 raise RuntimeError(
                     f"The statement failed on the preview clone, so production was not touched: {_first_line(e)}"
                 ) from None
-            diff = self.diff(target, clone, keys=keys, table=target)
+            diff = self.diff(target, result, keys=keys, table=target)
             assessment = self.assess([target], diffs={target: diff})
         finally:
             if not keep:
                 self.backend.drop(clone)
+                if result != clone:
+                    try:
+                        self.backend.drop(result)
+                    except Exception:
+                        pass
         out = assessment.to_dict()
-        out["preview"] = {"sandbox_table": clone if keep else None, "executed_sql": rewritten}
+        out["preview"] = {"sandbox_table": result if keep else None, "executed_sql": rewritten}
         return out
 
     # --- alerts ---------------------------------------------------------------
@@ -307,6 +322,13 @@ def changed_columns(diff: TableDiff | None) -> list[str]:
             out.append(c.column)
     out += list(diff.schema.removed) + list(diff.schema.type_changed)
     return list(dict.fromkeys(out))
+
+
+_REPLACE_HEAD = re.compile(
+    r"^\s*(?:CREATE\s+OR\s+REPLACE\s+TABLE|REPLACE\s+TABLE)\s+(?P<name>(?:`[^`]+`|\"[^\"]+\"|[\w\-]+)"
+    r"(?:\.(?:`[^`]+`|\"[^\"]+\"|[\w\-]+))*)",
+    re.IGNORECASE,
+)
 
 
 def _first_line(e: BaseException) -> str:
