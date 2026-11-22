@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.32 (2026-11-22)
+
+Fixes from a scale, adversarial and platform-feature round on 0.1.31 on a Free Edition workspace. It found no safety problem: previews took 20–33 s on 1 million rows and 27–29 s on 10 million with exact counts; 8 operations at once on the same tables finished cleanly with unique clones; partitioned, liquid-clustered, identity-column and CHECK-constraint tables previewed correctly; hostile column names, forbidden words in values and 300-clause SQL were handled.
+
+- **Columns named like keywords can be previewed.** A write touching a column named `` `drop` `` (or `alter`, `grant`…) was refused as a DROP. Quoted names are now names to the keyword check; the check that the SQL doesn't name the production table still reads inside them. An unclosed `` ` `` or `"` is refused, and `"..."` is read both with and without backslash escapes, as engines differ.
+- **Tables with column masks or row filters get one clear message.** Databricks refuses shallow clones and time travel on them (`COLUMN_MASKS_FEATURE_NOT_SUPPORTED`, `ROW_LEVEL_SECURITY_FEATURE_NOT_SUPPORTED`), so neither `preview_write` nor `check-last-change` can work on them. bricksentry now checks for masks and filters first and says so, with what to do instead, before creating anything; it also recognises the engine's error if the check can't read them. It doesn't copy governed data into the sandbox to work around this, because the sandbox may be readable by more people than the table.
+- README: measured timings on 1 and 10 million rows; sampling on serverless mainly lowers cost, not time; the masked-table limit.
+
 ## 0.1.31 (2026-11-22)
 
 Fixes from two edge-case rounds on 0.1.30 on a Free Edition workspace: production was never changed in any scenario (writes to other tables, hidden statements, views, materialized views, column mapping and deletion vectors, `check-last-change` after OPTIMIZE, VACUUM, ALTER, RESTORE and overwrites, a write landing mid-check, Ctrl-C mid-run), and every rollback suggestion was confirmed by time travel.

@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from bricksentry import governed
 from bricksentry.backends.base import Backend, make_backend
 from bricksentry.config import Config
 from bricksentry.diff import diff_tables
@@ -210,11 +211,17 @@ class Sentry:
             raise ValueError(f"No keys configured for {target}; pass keys=[...] to preview_write")
         clone = sandbox_name(self.config.sandbox_schema, target)
         rewritten = rewrite_for_preview(sql, target, clone, self.backend.quote)
+        what = governed.describe(self.backend, target)
+        if what:
+            raise ValueError(governed.preview_message(target, what))
         schema = ".".join(clone.split(".")[:-1])
         created = bool(schema and self.backend.ensure_schema(schema))
         try:
             self.backend.clone(target, clone)
         except Exception as e:
+            what = governed.from_error(e)
+            if what:
+                raise ValueError(governed.preview_message(target, what)) from None
             raise RuntimeError(
                 f"Could not clone {target} to preview the write: {_first_line(e)}. Check the table name "
                 f"and that you can create tables in {schema or 'the sandbox schema'}."

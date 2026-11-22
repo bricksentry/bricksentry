@@ -246,7 +246,9 @@ def check_last_change(table, keys, version, since, sample_pct, allow_no_change, 
         click.echo(str(e), err=True)
         sys.exit(0 if allow_no_change else 2)
     except (NotImplementedError, ValueError, RuntimeError) as e:
-        raise click.ClickException(str(e)) from e
+        err = click.ClickException(str(e))
+        err.exit_code = 2  # never 1, which means BLOCK
+        raise err from e
     md = to_markdown(a)
     if output:
         Path(output).write_text(md)

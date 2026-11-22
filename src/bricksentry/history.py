@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from bricksentry import governed
+
 if TYPE_CHECKING:  # pragma: no cover
     from bricksentry.assess import Sentry
     from bricksentry.models import Assessment
@@ -253,6 +255,9 @@ def check_change(
     if not _NAME.fullmatch(table):
         raise ValueError(f"table must be schema.table or catalog.schema.table; got {table!r}")
 
+    what = governed.describe(db, table)
+    if what:
+        raise ValueError(governed.check_message(table, what))
     history = _read_history(db, table, history_limit)
     change = pick_change(table, history, version=version, since=since)
     keys = keys or sentry.config.spec(table).keys or db.primary_key(table)
@@ -273,6 +278,9 @@ def check_change(
             try:
                 db.clone_version(table, target, v)
             except Exception as e:
+                what = governed.from_error(e)
+                if what:
+                    raise ValueError(governed.check_message(table, what)) from None
                 raise RuntimeError(
                     f"Could not read version {v} of {table}: its files may have been removed by VACUUM, "
                     f"or you may lack CREATE TABLE on {scratch}. ({str(e).strip()[:300]})") from None

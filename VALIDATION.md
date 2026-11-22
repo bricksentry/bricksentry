@@ -33,6 +33,12 @@ Please share what you see, especially from other clouds, classic compute and big
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
 
+## Scale, adversarial and platform-feature round on 0.1.31, and 0.1.32 (November 22, 2026)
+
+On a Free Edition serverless warehouse, in a scratch schema dropped at the end. **Scale:** previews (clone, write, full keyed diff, drop) took 20–33 s on 1 million rows and 27–29 s on 10 million, with exact counts; `check-last-change` took 27 s on 10 million; a 120-column table was fine. `sample_pct: 10` drew the identical sample twice and estimated 19.98% changed against a true 20%, but saved little time on serverless (it lowers cost). **Stress:** 8 operations at once, including two pairs on the same table, finished in about 30 s with unique clone names and nothing left behind; Ctrl-C mid-run still cleaned up. **Adversarial:** column names with spaces, quotes and keywords, forbidden words inside values, UNION inserts and 300-clause SQL were handled correctly. **Platform features:** partitioned, liquid-clustered, identity-column and CHECK-constraint tables previewed correctly, and inserts violating a constraint failed on the clone only. **Reliability:** a failing webhook gave one status line without its URL. Every table's history held only the round's own commits.
+
+Findings, fixed in 0.1.32: a column named `` `drop` `` tripped the DROP refusal; tables with column masks or row filters failed at the clone. A follow-up confirmed Databricks refuses time travel on such tables too (`COLUMN_MASKS_FEATURE_NOT_SUPPORTED.TIME_TRAVEL`, `ROW_LEVEL_SECURITY_FEATURE_NOT_SUPPORTED.TIME_TRAVEL`), so no clone-free path exists; 0.1.32 says so up front. Not tested: 100 million rows and more (cost), and foreign catalogs (none on Free Edition).
+
 ## Edge-case rounds on 0.1.30, and 0.1.31 (November 21, 2026)
 
 **Release check of 0.1.31 from PyPI:** all five fixes confirmed on Free Edition: `'--'` and `'/*'` inside a quoted value can't hide a second statement (the other table intact), a leading comment before a MERGE previews with the right counts, `{{target}}` in a quoted value is stored as text, a missing Slack secret gives one warning line, the verdict and the Undo line, then exit 2 with no traceback, and `cleanup` dropped only the kept clone. Every table's history was identical before and after.
@@ -236,6 +242,8 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
+| Scale and platform round on 0.1.31 | A column named `` `drop` `` was refused as a DROP | 0.1.32 |
+| Scale and platform round on 0.1.31 | Tables with column masks or row filters failed at the clone without saying why (Databricks refuses clones and time travel on them) | 0.1.32 (clear message up front) |
 | Edge-case rounds on 0.1.30 | `--` or `/*` inside a quoted value hid a following statement from the `preview_write` guard (found while fixing the rounds' findings) | 0.1.31 |
 | Edge-case rounds on 0.1.30 | A leading comment was refused; `{{target}}` inside a quoted value became the clone's name; a missing Slack secret gave a traceback; carrier-grade NAT addresses passed the URL guard; no way to remove clones of killed runs | 0.1.31 |
 | First use as an assistant's gate (0.1.29) | Previewing `CREATE OR REPLACE TABLE` failed on serverless (it replaced the shallow clone, which can't take `CLUSTER BY AUTO`) | 0.1.30 |

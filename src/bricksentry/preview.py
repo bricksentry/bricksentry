@@ -63,7 +63,7 @@ def _strip_quotes(name: str) -> str:
     return name.replace("`", "").replace('"', "").lower()
 
 
-def _scan(sql: str, backslash: bool = True) -> list[tuple[str, int, int]]:
+def _scan(sql: str, backslash: bool = True, idents: bool = False) -> list[tuple[str, int, int]]:
     """Split ``sql`` into ("code" | "string" | "comment", start, end) pieces.
 
     '...' is a string literal. `...` and "..." are skipped over as single tokens (so a
@@ -88,7 +88,7 @@ def _scan(sql: str, backslash: bool = True) -> list[tuple[str, int, int]]:
     def skip_quoted(j: int, q: str) -> int:
         j += 1
         while j < n:
-            if sql[j] == "\\" and q != "`" and (backslash or q != "'"):
+            if sql[j] == "\\" and q != "`" and backslash:
                 j += 2
                 continue
             if sql[j] == q:
@@ -102,7 +102,14 @@ def _scan(sql: str, backslash: bool = True) -> list[tuple[str, int, int]]:
     while i < n:
         c = sql[i]
         if c in "`\"":
-            i = skip_quoted(i, c)
+            j = skip_quoted(i, c)
+            if idents:  # report quoted names as their own pieces (for the keyword check)
+                if j >= n and not (j - i >= 2 and sql[j - 1] == c):
+                    raise PreviewGuardError(f"The SQL has a quote ({c}) that is never closed.")
+                close("code", start, i)
+                close("ident", i, j)
+                start = j
+            i = j
         elif c == "'":
             close("code", start, i)
             j = skip_quoted(i, "'")
@@ -128,15 +135,20 @@ def _scan(sql: str, backslash: bool = True) -> list[tuple[str, int, int]]:
     return pieces
 
 
-def _strip_sql_comments_and_strings(sql: str, backslash: bool = True) -> str:
-    """The SQL with comments blanked and '...' literals emptied, for the guards to inspect."""
-    return "".join(sql[a:b] if k == "code" else (" " if k == "comment" else "''")
-                   for k, a, b in _scan(sql, backslash))
+_BLANK = {"comment": " ", "string": "''", "ident": "`_`"}
 
 
-def _masked(sql: str) -> list[str]:
-    """The SQL as each engine family would read it; every guard must pass on all of them."""
-    return [_strip_sql_comments_and_strings(sql, True), _strip_sql_comments_and_strings(sql, False)]
+def _strip_sql_comments_and_strings(sql: str, backslash: bool = True, idents: bool = False) -> str:
+    """The SQL with comments blanked and '...' literals emptied, for the guards to inspect.
+    With ``idents``, quoted names (`drop`, "drop") are blanked too."""
+    return "".join(sql[a:b] if k == "code" else _BLANK[k] for k, a, b in _scan(sql, backslash, idents))
+
+
+def _masked(sql: str, idents: bool = False) -> list[str]:
+    """The SQL as each engine family would read it; every guard must pass on all of them.
+    ``idents`` blanks quoted names: right for keyword and ``;`` checks (a column named
+    `drop` is a name, not a statement), wrong for finding the production table's name."""
+    return [_strip_sql_comments_and_strings(sql, True, idents), _strip_sql_comments_and_strings(sql, False, idents)]
 
 
 _LEADING_COMMENTS = re.compile(r"\A(?:\s+|--[^\n]*(?:\n|\Z)|/\*.*?\*/)*", re.S)
@@ -166,7 +178,7 @@ def statement_head(sql: str) -> str:
 def rewrite_for_preview(sql: str, target: str, clone: str, quote) -> str:
     """Return SQL that writes to ``clone`` instead of ``target``. Raises PreviewGuardError if unsafe."""
     body = sql.strip().rstrip(";").strip()
-    for code in _masked(body):
+    for code in _masked(body, idents=True):
         if ";" in code:
             raise PreviewGuardError(
                 "preview_write accepts exactly one SQL statement. Preview each write separately, in the order they "
