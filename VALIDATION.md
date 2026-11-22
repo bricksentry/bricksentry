@@ -35,11 +35,23 @@ Please share what you see, especially from other clouds, classic compute and big
 
 ## Scale, adversarial and platform-feature round on 0.1.31, and 0.1.32 (November 22, 2026)
 
+**500 million and 1 billion rows** (0.1.31, same battery; narrow synthetic tables of 1.8 GB and 3.5 GB on disk, so real, wider tables will take longer):
+
+| Operation | 500 million | 1 billion |
+|---|---|---|
+| Preview, UPDATE of 1% | 163 s, exact (5M rows) | 275 s, exact (10M rows) |
+| Preview, UPDATE of every row | 162 s, exact, totals +100% | 287 s, exact, totals +100% |
+| Preview, DELETE of 10% | 114 s, exact (50M rows) | 214 s, exact (100M rows) |
+| `check-last-change`, full diff of a 20% update | 136 s, 20.00%, Undo correct | 264 s, 20.00%, Undo matched time travel |
+| Same with `sample_pct: 10`, run twice | 57 s / 59 s, identical sample, 19.99% | 93 s / 92 s, identical sample, 20.00% |
+
+Time grew more slowly than the table (the worst-case preview took 47 s on 100 million rows and 287 s on 1 billion), and sampling went from no gain at 10 million rows to 2.8× faster at 1 billion. Every history change was the round's own; no clone was left behind.
+
 **100 million rows** (0.1.31, same scale code as 0.1.32): the table was created in 15 s. Previews: UPDATE of 1% (1 million rows) 61 s, UPDATE of every row 47 s (totals +100%, correct), DELETE of 10% 37 s, all with exact counts. `check-last-change` on a real 20% update: 49 s for the full diff (20,000,000 rows, 20.00%), and the Undo version matched time travel; with `sample_pct: 10`, 33 s and 32 s, the identical 1,998,395-row sample both times, estimating 20.00%. At this size sampling saves real time (at 10 million it saved none). Every history change was the round's own; nothing left behind.
 
 On a Free Edition serverless warehouse, in a scratch schema dropped at the end. **Scale:** previews (clone, write, full keyed diff, drop) took 20–33 s on 1 million rows and 27–29 s on 10 million, with exact counts; `check-last-change` took 27 s on 10 million; a 120-column table was fine. `sample_pct: 10` drew the identical sample twice and estimated 19.98% changed against a true 20%, but saved little time on serverless (it lowers cost). **Stress:** 8 operations at once, including two pairs on the same table, finished in about 30 s with unique clone names and nothing left behind; Ctrl-C mid-run still cleaned up. **Adversarial:** column names with spaces, quotes and keywords, forbidden words inside values, UNION inserts and 300-clause SQL were handled correctly. **Platform features:** partitioned, liquid-clustered, identity-column and CHECK-constraint tables previewed correctly, and inserts violating a constraint failed on the clone only. **Reliability:** a failing webhook gave one status line without its URL. Every table's history held only the round's own commits.
 
-Findings, fixed in 0.1.32: a column named `` `drop` `` tripped the DROP refusal; tables with column masks or row filters failed at the clone. A follow-up confirmed Databricks refuses time travel on such tables too (`COLUMN_MASKS_FEATURE_NOT_SUPPORTED.TIME_TRAVEL`, `ROW_LEVEL_SECURITY_FEATURE_NOT_SUPPORTED.TIME_TRAVEL`), so no clone-free path exists; 0.1.32 says so up front. Not tested: more than 100 million rows, and foreign catalogs (none on Free Edition).
+Findings, fixed in 0.1.32: a column named `` `drop` `` tripped the DROP refusal; tables with column masks or row filters failed at the clone. A follow-up confirmed Databricks refuses time travel on such tables too (`COLUMN_MASKS_FEATURE_NOT_SUPPORTED.TIME_TRAVEL`, `ROW_LEVEL_SECURITY_FEATURE_NOT_SUPPORTED.TIME_TRAVEL`), so no clone-free path exists; 0.1.32 says so up front. Not tested: more than 1 billion rows, wide real-world tables at that size, and foreign catalogs (none on Free Edition).
 
 ## Edge-case rounds on 0.1.30, and 0.1.31 (November 21, 2026)
 
