@@ -155,7 +155,7 @@ bricksentry is listed in the [official MCP Registry](https://registry.modelconte
 Designed for agents:
 
 - **The verdict never comes from an LLM.** Rules in `policy.yml` decide, so the same change always gets the same answer.
-- **Read-only by default.** Only `preview_write` writes, and only to a sandbox clone. It accepts a single INSERT / MERGE / UPDATE / DELETE / CREATE OR REPLACE whose target must be the clone, and it refuses DROP, TRUNCATE, ALTER, GRANT and multiple statements.
+- **Read-only by default.** Only `preview_write` writes, and only to a sandbox clone. It accepts a single INSERT / MERGE / UPDATE / DELETE / CREATE OR REPLACE whose target must be the clone, and it refuses DROP, TRUNCATE, ALTER, GRANT and multiple statements. Comments before the statement are fine. Write the target as its full name (`main.sales.orders`) or `{{target}}`; a table name or `{{target}}` inside a quoted value is left as data. A write wrapped in a CTE (`WITH ... INSERT`) is refused: put the CTE in the statement's `SELECT` instead.
 - **Errors come back as `{"error": ...}`**, so agents can recover instead of crashing.
 - **Bounded cost:** deterministic hash sampling (`sample_pct`), capped samples, and lineage limited by depth and lookback window. A full-table checksum guards the sample: if the sample shows no change but the tables differ, the diff re-runs on every row, so a one-row change can't slip through.
 - **Assessments are saved** as JSON (default `~/.bricksentry/assessments`), so `explain_diff` and `safe_to_ship` work from another process or a fresh `Sentry`.
@@ -209,7 +209,10 @@ bricksentry preview main.sales.orders --sql "MERGE INTO {{target}} t USING updat
 bricksentry assess --from-git origin/main --pr 42 --format markdown --fail-on needs_human
 bricksentry rollback main.sales.orders
 bricksentry check-last-change main.sales.orders             # the change a pipeline already made
+bricksentry cleanup                                         # drop clones left by a run that was killed
 ```
+
+Every clone is dropped when its run ends, even on Ctrl-C; only a run that is killed outright can leave one behind. `cleanup` lists clones older than 6 hours in `sandbox_schema` (or `--scratch-schema`) and asks before dropping them. It only matches bricksentry's own clone names (`TABLE__preview_xxxxxxxx`, `bs_check_TABLE_vN_xxxxxxxx`), never your tables. If the scratch schema doesn't exist, bricksentry creates it and says so.
 
 Exit codes: `0` below `--fail-on`, `1` at or above it, `2` for configuration errors.
 
@@ -318,6 +321,8 @@ print(a.tables[0].summary)
 
 s.preview_write("DELETE FROM main.sales.orders WHERE status = 'test'", "main.sales.orders")
 ```
+
+The Python API is for people: unlike the agent tools and the MCP server, its diffs include example rows (before and after values), so you can see what changed. Don't hand its output to an agent that shouldn't see the data; use the agent tools for that.
 
 ## Configuration
 

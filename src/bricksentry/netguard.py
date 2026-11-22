@@ -2,7 +2,7 @@
 
 The URLs come from your own config or CI environment, but a mistyped or malicious value could
 still point at an internal service. So outbound requests must use https, must not target
-loopback, private, link-local or other non-public addresses, and never follow redirects.
+loopback, private, link-local, carrier-grade NAT (100.64.0.0/10) or other non-public addresses, and never follow redirects.
 
 Set ``BRICKSENTRY_ALLOW_PRIVATE_URLS=1`` when a legitimate target is on a private network
 (for example GitHub Enterprise Server or a webhook relay inside your VPC).
@@ -17,6 +17,7 @@ import urllib.request
 from urllib.parse import urlsplit
 
 ALLOW_PRIVATE_ENV = "BRICKSENTRY_ALLOW_PRIVATE_URLS"
+_SHARED_V4 = ipaddress.ip_network("100.64.0.0/10")
 
 
 class UnsafeURLError(ValueError):
@@ -31,8 +32,10 @@ def _is_public(ip: str) -> bool:
     addr = ipaddress.ip_address(ip.split("%", 1)[0])
     if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
         addr = addr.ipv4_mapped
+    if addr.version == 4 and addr in _SHARED_V4:  # carrier-grade NAT, used inside some cloud networks
+        return False
     return not (addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
-                or addr.is_multicast or addr.is_unspecified)
+                or addr.is_multicast or addr.is_unspecified) and addr.is_global
 
 
 def check_url(url: str, what: str = "URL") -> None:

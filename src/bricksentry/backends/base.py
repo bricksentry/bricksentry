@@ -4,8 +4,11 @@ session and stays cheap enough for an agent to call in a loop."""
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
+
+log = logging.getLogger("bricksentry")
 
 NUMERIC_PREFIXES = (
     "tinyint", "smallint", "int", "bigint", "long", "short", "byte", "integer",
@@ -128,8 +131,40 @@ class Backend(ABC):
     def drop(self, table: str) -> None:
         self.execute(f"DROP TABLE IF EXISTS {self.qualified(table)}")
 
-    def ensure_schema(self, schema: str) -> None:
+    def schema_exists(self, schema: str) -> bool | None:
+        """True / False, or None when the engine can't say (then nothing is reported)."""
+        *cat, name = schema.split(".")
+        where = f"lower(schema_name) = {self._lit(name.strip('`').lower())}"
+        if cat:
+            where += f" AND lower(catalog_name) = {self._lit(cat[0].strip('`').lower())}"
+        try:
+            return bool(self.query(f"SELECT 1 AS x FROM information_schema.schemata WHERE {where} LIMIT 1"))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _lit(v: str) -> str:
+        return "'" + v.replace("'", "''") + "'"
+
+    def ensure_schema(self, schema: str) -> bool:
+        """Create the scratch schema if needed. Returns True when it was created, and says so:
+        a schema appearing out of nowhere should never be a surprise."""
+        existed = self.schema_exists(schema)
         self.execute(f"CREATE SCHEMA IF NOT EXISTS {self.qualified(schema)}")
+        if existed is False:
+            log.warning("bricksentry: created scratch schema %s (it didn't exist). bricksentry only puts "
+                        "temporary clones there; drop it when you no longer need it.", schema)
+            return True
+        return False
+
+    def list_tables(self, schema: str) -> list[dict[str, Any]]:
+        """Tables in ``schema``: [{"name": ..., "created": datetime | None}]."""
+        *cat, name = schema.split(".")
+        where = f"lower(table_schema) = {self._lit(name.strip('`').lower())}"
+        if cat:
+            where += f" AND lower(table_catalog) = {self._lit(cat[0].strip('`').lower())}"
+        rows = self.query(f"SELECT table_name FROM information_schema.tables WHERE {where}")
+        return [{"name": r["table_name"], "created": None} for r in rows]
 
     def current_version(self, table: str) -> int | None:
         return None

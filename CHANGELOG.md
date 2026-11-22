@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.31 (2026-11-22)
+
+Fixes from two edge-case rounds on 0.1.30 on a Free Edition workspace: production was never changed in any scenario (writes to other tables, hidden statements, views, materialized views, column mapping and deletion vectors, `check-last-change` after OPTIMIZE, VACUUM, ALTER, RESTORE and overwrites, a write landing mid-check, Ctrl-C mid-run), and every rollback suggestion was confirmed by time travel.
+
+- **A quoted value can no longer hide a second statement from `preview_write`.** The guard treated `--` or `/*` inside a quoted value as the start of a comment, so in `UPDATE t SET a = '--'; DROP TABLE other` it didn't see the `;` or the `DROP`. The guard now reads `'...'`, `"..."` and `` `...` `` the way the engine does, checks the SQL both ways where engines differ on backslashes, and refuses a quote or `/*` that is never closed. Found while fixing the next item; the live rounds didn't hit it. Upgrade if agents can call `preview_write`.
+- **Comments before the statement are allowed.** `-- fix duplicates` above a MERGE was refused as "must start with INSERT, MERGE…". Agents often start with a comment.
+- **`{{target}}` or the table name inside a quoted value stays data.** It was replaced with the clone's name (which failed safe as `needs_human`, but confusingly). Only the table position is rewritten now.
+- **A webhook secret that can't be read no longer stops the job with a traceback.** The check still runs and prints its result, then one line says which secret couldn't be read and why, and the task fails (exit 2) so the broken alert gets fixed.
+- **The outbound-URL guard blocks carrier-grade NAT addresses** (100.64.0.0/10), used inside some cloud networks.
+- **New: `bricksentry cleanup`.** A run killed outright (process or cluster gone) can leave its clone behind. `cleanup` lists clones older than 6 hours and asks before dropping them; it only ever matches bricksentry's own clone names.
+- When bricksentry creates the scratch schema because it didn't exist, it says so (and `preview_write` returns `created_schema`).
+- README: comments and CTE writes in `preview_write`, full table names, and that the Python API's diffs include example rows while the agent tools don't.
+
 ## 0.1.30 (2026-11-18)
 
 A patch from the first real use of bricksentry as an assistant's safety gate: an assistant built a Bronze/Silver/Gold HR pipeline, then changed the Gold logic only after `whats_downstream`, `rollback_plan`, `preview_write` and `safe_to_ship`. Verified on Databricks before release: the CTAS preview that failed now runs with exact counts, a CTAS reading the table it replaces works, nothing is left in the sandbox, production stays at its version, and the battery passed 15 of 15.

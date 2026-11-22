@@ -224,6 +224,25 @@ class DatabricksBackend(Backend):
                             e["row_filter"] = True
         return out
 
+    def schema_exists(self, schema: str) -> bool | None:
+        parts = [p.strip("`") for p in schema.split(".")]
+        if len(parts) != 2:
+            return None
+        try:
+            rows = self.query(f"SELECT 1 AS x FROM {self.quote(parts[0])}.information_schema.schemata "
+                              f"WHERE schema_name = {self._lit(parts[1].lower())} LIMIT 1")
+        except Exception:  # no such catalog, no access: the CREATE that follows reports it
+            return None
+        return bool(rows)
+
+    def list_tables(self, schema: str) -> list[dict[str, Any]]:
+        parts = [p.strip("`") for p in schema.split(".")]
+        if len(parts) != 2:
+            raise ValueError(f"Give the scratch schema as catalog.schema, got {schema!r}")
+        rows = self.query(f"SELECT table_name, created FROM {self.quote(parts[0])}.information_schema.tables "
+                          f"WHERE table_schema = {self._lit(parts[1].lower())}")
+        return [{"name": r["table_name"], "created": r.get("created")} for r in rows]
+
     @staticmethod
     def _lit(v: str) -> str:
         return "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"

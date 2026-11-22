@@ -16,7 +16,7 @@ from bricksentry.explain import explain_columns, explain_diff, explain_impact
 from bricksentry.lineage import LineageProvider, make_lineage
 from bricksentry.models import Assessment, ImpactNode, TableAssessment, TableDiff, Verdict
 from bricksentry.policy import ColumnContext, Policy
-from bricksentry.preview import rewrite_for_preview, sandbox_name
+from bricksentry.preview import rewrite_for_preview, sandbox_name, statement_head
 
 
 class Sentry:
@@ -211,8 +211,7 @@ class Sentry:
         clone = sandbox_name(self.config.sandbox_schema, target)
         rewritten = rewrite_for_preview(sql, target, clone, self.backend.quote)
         schema = ".".join(clone.split(".")[:-1])
-        if schema:
-            self.backend.ensure_schema(schema)
+        created = bool(schema and self.backend.ensure_schema(schema))
         try:
             self.backend.clone(target, clone)
         except Exception as e:
@@ -225,11 +224,13 @@ class Sentry:
         # applies CLUSTER BY AUTO to new tables, which a clone can't take). The clone stays,
         # for statements that read the target (CREATE OR REPLACE TABLE t AS SELECT ... FROM t).
         result = clone
-        m = _REPLACE_HEAD.match(rewritten)
+        head = statement_head(rewritten)
+        lead = len(rewritten) - len(head)
+        m = _REPLACE_HEAD.match(head)
         if m:
             result = clone + "_out"
-            rewritten = rewritten[: m.start("name")] + ".".join(
-                self.backend.quote(p) for p in result.split(".")) + rewritten[m.end("name"):]
+            rewritten = rewritten[: lead + m.start("name")] + ".".join(
+                self.backend.quote(p) for p in result.split(".")) + rewritten[lead + m.end("name"):]
         try:
             try:
                 self.backend.execute(rewritten)
@@ -249,6 +250,8 @@ class Sentry:
                         pass
         out = assessment.to_dict()
         out["preview"] = {"sandbox_table": result if keep else None, "executed_sql": rewritten}
+        if created:
+            out["preview"]["created_schema"] = schema
         return out
 
     # --- alerts ---------------------------------------------------------------

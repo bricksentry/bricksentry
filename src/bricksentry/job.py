@@ -97,7 +97,26 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def make_sentry(args: argparse.Namespace, backend: Any = None):
+def _secret_or_problem(ref: str | None, flag: str, problems: list[str] | None):
+    """Read a webhook secret. If it can't be read, the check still runs (an alert channel is
+    no reason to skip the safety check), and the problem is reported and fails the task."""
+    if not ref:
+        return None
+    try:
+        return read_secret(ref)
+    except SystemExit as e:  # a malformed scope/key
+        msg = str(e)
+    except Exception as e:
+        first = (str(e).strip().splitlines() or [type(e).__name__])[0][:200]
+        msg = (f"{flag} {ref}: could not read the secret ({first}). Check that the secret scope and key exist "
+               "and that the job's run-as identity can READ the scope.")
+    if problems is None:
+        raise SystemExit(msg)
+    problems.append(msg + " No alert was sent on that channel.")
+    return None
+
+
+def make_sentry(args: argparse.Namespace, backend: Any = None, problems: list[str] | None = None):
     from bricksentry.assess import Sentry
     from bricksentry.config import Config
 
@@ -115,7 +134,8 @@ def make_sentry(args: argparse.Namespace, backend: Any = None):
     if args.scratch_schema:
         cfg.sandbox_schema = args.scratch_schema
     notify = dict(cfg.notify or {})
-    slack, teams = read_secret(args.slack_secret), read_secret(args.teams_secret)
+    slack = _secret_or_problem(args.slack_secret, "--slack-secret", problems)
+    teams = _secret_or_problem(args.teams_secret, "--teams-secret", problems)
     if slack:
         notify["slack_webhook"] = slack
     if teams:
@@ -147,7 +167,10 @@ def run(argv: list[str] | None = None, backend: Any = None, out=print) -> int:
         out("bricksentry: no tables to check.")
         return 0
     keys = parse_keys(args.key + [k for k in (args.keys or "").split(";") if k.strip()])
-    s = make_sentry(args, backend=backend)
+    problems: list[str] = []
+    s = make_sentry(args, backend=backend, problems=problems)
+    for p in problems:
+        out(f"bricksentry: WARNING {p}")
     worst: Verdict | None = None
     errors = 0
     for table in tables:
@@ -172,7 +195,10 @@ def run(argv: list[str] | None = None, backend: Any = None, out=print) -> int:
         out(f"  Undo: {t.rollback}")
         for line in s.notify(a):
             out(f"  notify {line}")
-    if errors:
+    if errors or problems:
+        if problems and not errors:
+            out("bricksentry: the check ran, but the notification setup above is broken; failing this task so "
+                "it gets fixed.")
         return 2
     if worst is not None and args.fail_on != "never" and worst.rank >= Verdict(args.fail_on).rank:
         out(f"bricksentry: verdict {worst.value} is at or above --fail-on {args.fail_on}; failing this task "

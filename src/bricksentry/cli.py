@@ -448,6 +448,55 @@ def _run(cmd: click.Command, prog_name: str | None = None) -> None:
         sys.exit(2)
 
 
+@main.command()
+@click.option("--scratch-schema", "schema", default=None,
+              help="catalog.schema to clean. Defaults to sandbox_schema in bricksentry.yml. Repeat the command "
+                   "for the job's --scratch-schema if that is a different schema.")
+@click.option("--older-than-hours", type=float, default=6.0, show_default=True,
+              help="Only drop clones at least this old, so a run that is still going keeps its clones. "
+                   "0 drops every bricksentry clone, including ones whose age can't be read.")
+@click.option("--yes", "-y", is_flag=True, help="Drop without asking.")
+@config_opt
+def cleanup(schema, older_than_hours, yes, config_path):
+    """Drop clones left behind by runs that were killed outright.
+
+    Only tables named like bricksentry's own clones are matched (TABLE__preview_xxxxxxxx and
+    bs_check_TABLE_vN_xxxxxxxx). It lists them and asks before dropping anything.
+    """
+    from bricksentry.cleanup import drop_leftovers, find_leftovers
+
+    s = _sentry(config_path)
+    schema = schema or s.config.sandbox_schema
+    drop, skip = find_leftovers(s.backend, schema, older_than_hours)
+    if skip:
+        click.echo(f"Keeping {len(skip)} recent clone(s) (younger than {older_than_hours:g}h, or age unknown; "
+                   "use --older-than-hours 0 to include them):")
+        for t in skip:
+            click.echo(f"  {t}")
+    if not drop:
+        click.echo(f"No leftover bricksentry clones to drop in {schema}.")
+        return
+    click.echo(f"Leftover bricksentry clone(s) in {schema}:")
+    for t in drop:
+        click.echo(f"  {t}")
+    if not yes:
+        if not sys.stdin.isatty():
+            click.echo("Nothing dropped. Re-run with --yes to drop them.", err=True)
+            return
+        if not click.confirm(f"Drop these {len(drop)} table(s)?", default=False):
+            click.echo("Nothing dropped.")
+            return
+    failed = 0
+    for t, err in drop_leftovers(s.backend, drop):
+        if err:
+            failed += 1
+            click.echo(f"  could not drop {t}: {err}", err=True)
+        else:
+            click.echo(f"  dropped {t}")
+    if failed:
+        sys.exit(2)
+
+
 def entry() -> None:
     """Console entry point: turn unexpected errors into a clean message and exit code 2."""
     _run(main)

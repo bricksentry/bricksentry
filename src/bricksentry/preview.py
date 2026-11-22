@@ -63,43 +63,144 @@ def _strip_quotes(name: str) -> str:
     return name.replace("`", "").replace('"', "").lower()
 
 
-def _strip_sql_comments_and_strings(sql: str) -> str:
-    sql = re.sub(r"--[^\n]*", " ", sql)
-    sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.S)
-    return re.sub(r"'(?:[^'\\]|\\.|'')*'", "''", sql)
+def _scan(sql: str, backslash: bool = True) -> list[tuple[str, int, int]]:
+    """Split ``sql`` into ("code" | "string" | "comment", start, end) pieces.
+
+    '...' is a string literal. `...` and "..." are skipped over as single tokens (so a
+    ``--`` or ``;`` inside them is never mistaken for a comment or a statement end) but count
+    as code: they can quote the table name, and keeping their text visible to the guards can
+    only cause a refusal, never hide anything.
+
+    Engines differ on backslashes in '...' (Databricks treats them as escapes, DuckDB and
+    ANSI SQL don't), so the guards look at the SQL both ways; see ``_masked``. An unclosed
+    '...' or /* would hide the rest of the statement, so it is refused.
+    """
+    pieces: list[tuple[str, int, int]] = []
+    i, start, n = 0, 0, len(sql)
+
+    def close(kind: str, a: int, b: int) -> None:
+        if b > a:
+            if pieces and pieces[-1][0] == kind and pieces[-1][2] == a:
+                pieces[-1] = (kind, pieces[-1][1], b)
+            else:
+                pieces.append((kind, a, b))
+
+    def skip_quoted(j: int, q: str) -> int:
+        j += 1
+        while j < n:
+            if sql[j] == "\\" and q != "`" and (backslash or q != "'"):
+                j += 2
+                continue
+            if sql[j] == q:
+                if sql.startswith(q + q, j):
+                    j += 2
+                    continue
+                return j + 1
+            j += 1
+        return n
+
+    while i < n:
+        c = sql[i]
+        if c in "`\"":
+            i = skip_quoted(i, c)
+        elif c == "'":
+            close("code", start, i)
+            j = skip_quoted(i, "'")
+            if j >= n and not (j - i >= 2 and sql[j - 1] == "'"):
+                raise PreviewGuardError("The SQL has a quote (') that is never closed.")
+            close("string", i, j)
+            i = start = j
+        elif sql.startswith("--", i) or sql.startswith("/*", i):
+            close("code", start, i)
+            if sql[i + 1] == "-":
+                j = sql.find("\n", i)
+                j = n if j < 0 else j
+            else:
+                j = sql.find("*/", i + 2)
+                if j < 0:
+                    raise PreviewGuardError("The SQL has a /* comment that is never closed.")
+                j += 2
+            close("comment", i, j)
+            i = start = j
+        else:
+            i += 1
+    close("code", start, n)
+    return pieces
+
+
+def _strip_sql_comments_and_strings(sql: str, backslash: bool = True) -> str:
+    """The SQL with comments blanked and '...' literals emptied, for the guards to inspect."""
+    return "".join(sql[a:b] if k == "code" else (" " if k == "comment" else "''")
+                   for k, a, b in _scan(sql, backslash))
+
+
+def _masked(sql: str) -> list[str]:
+    """The SQL as each engine family would read it; every guard must pass on all of them."""
+    return [_strip_sql_comments_and_strings(sql, True), _strip_sql_comments_and_strings(sql, False)]
+
+
+_LEADING_COMMENTS = re.compile(r"\A(?:\s+|--[^\n]*(?:\n|\Z)|/\*.*?\*/)*", re.S)
+
+
+def _sub_in_code(pattern: re.Pattern[str], repl: str, sql: str) -> tuple[str, int]:
+    """Like ``pattern.subn`` but leaves comments and string literals alone, so a table
+    name or ``{{target}}`` written as a value is never turned into the clone's name."""
+    out, last, total = [], 0, 0
+    for kind, a, b in _scan(sql):
+        if kind != "code":
+            continue
+        out.append(sql[last:a])
+        piece, k = pattern.subn(lambda _m: repl, sql[a:b])
+        out.append(piece)
+        total += k
+        last = b
+    out.append(sql[last:])
+    return "".join(out), total
+
+
+def statement_head(sql: str) -> str:
+    """``sql`` without the comments and whitespace in front of the statement."""
+    return sql[_LEADING_COMMENTS.match(sql).end():]
 
 
 def rewrite_for_preview(sql: str, target: str, clone: str, quote) -> str:
     """Return SQL that writes to ``clone`` instead of ``target``. Raises PreviewGuardError if unsafe."""
     body = sql.strip().rstrip(";").strip()
-    code = _strip_sql_comments_and_strings(body)
-    if ";" in code:
-        raise PreviewGuardError(
-            "preview_write accepts exactly one SQL statement. Preview each write separately, in the order they would run."
-        )
-    forbidden = _FORBIDDEN_RE.search(code)
-    if forbidden:
-        raise PreviewGuardError(_refusal(forbidden.group(1)))
+    for code in _masked(body):
+        if ";" in code:
+            raise PreviewGuardError(
+                "preview_write accepts exactly one SQL statement. Preview each write separately, in the order they "
+                "would run."
+            )
+        forbidden = _FORBIDDEN_RE.search(code)
+        if forbidden:
+            raise PreviewGuardError(_refusal(forbidden.group(1)))
 
     clone_q = ".".join(quote(p) for p in clone.split("."))
     if PLACEHOLDER in body:
-        out = body.replace(PLACEHOLDER, clone_q)
+        out, n = _sub_in_code(re.compile(re.escape(PLACEHOLDER)), clone_q, body)
+        if n == 0:
+            raise PreviewGuardError(
+                f"{PLACEHOLDER} only appears inside a quoted string or a comment. Put it where the table name goes, "
+                "for example UPDATE {{target}} SET ..."
+            )
     else:
         parts = [re.escape(p) for p in target.split(".")]
         pattern = r"(?<![\w.])" + r"\.".join(rf"[`\"]?{p}[`\"]?" for p in parts) + r"(?![\w])"
-        out, n = re.subn(pattern, clone_q, body, flags=re.IGNORECASE)
+        out, n = _sub_in_code(re.compile(pattern, re.IGNORECASE), clone_q, body)
         if n == 0:
             raise PreviewGuardError(
-                f"Could not find {target} in the SQL. Write it literally or use the {PLACEHOLDER} placeholder."
+                f"Could not find {target} in the SQL. Write it literally (catalog.schema.table) or use the "
+                f"{PLACEHOLDER} placeholder."
             )
 
-    m = _WRITE_RE.match(out)
+    m = _WRITE_RE.match(statement_head(out))
     if not m:
         raise PreviewGuardError("Statement must start with INSERT, MERGE, UPDATE, DELETE or CREATE OR REPLACE TABLE")
     if _strip_quotes(m.group("target")) != _strip_quotes(clone):
         raise PreviewGuardError(f"The write target must be {target}; got {m.group('target')}")
 
     leftover = re.compile(r"(?<![\w.])" + re.escape(_strip_quotes(target)) + r"(?![\w])")
-    if leftover.search(_strip_quotes(_strip_sql_comments_and_strings(out))):
+    if any(leftover.search(_strip_quotes(code)) for code in _masked(out)):
         raise PreviewGuardError("Production table name still present after rewrite; refusing to run")
     return out

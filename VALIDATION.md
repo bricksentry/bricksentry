@@ -33,6 +33,12 @@ Please share what you see, especially from other clouds, classic compute and big
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
 
+## Edge-case rounds on 0.1.30, and 0.1.31 (November 21, 2026)
+
+Two rounds on a Free Edition workspace, confined to their own scratch schemas, comparing `DESCRIBE HISTORY` of every table before and after each case. Production was never changed. Previews of UPDATE, DELETE, INSERT and MERGE wrote only to clones; writes aimed at another table, a different spelling of the target, multiple statements and CTE writes were refused; views and materialized views gave clean errors; a table with column mapping and deletion vectors previewed correctly. `check-last-change` picked the right change after OPTIMIZE, VACUUM, ALTER ADD COLUMN, RESTORE and a schema-changing overwrite, and every suggested rollback matched time travel; it warned when a restore would also undo a newer ALTER or a write that landed mid-check, and the diff stayed pinned to the versions it started with. Ctrl-C mid-run dropped the clone. Streaming tables can't be created on Free Edition and weren't tested.
+
+Findings, all fixed in 0.1.31: a leading comment was refused; `{{target}}` inside a quoted value became the clone's name; a missing Slack secret scope gave a traceback; the outbound-URL guard let carrier-grade NAT addresses through; a run killed outright leaves its clone and there was no command to remove it; a missing scratch schema was created silently. While fixing the first, a guard gap turned up that the rounds didn't hit: `--` inside a quoted value hid a following statement from the guard.
+
 ## First use as an assistant's safety gate, and 0.1.30 (November 18, 2026)
 
 Genie built a Bronze/Silver/Gold HR pipeline (50 raw rows with duplicates and invalid salaries, 44 clean, 5 department rows), then changed the Gold logic to count employees on leave as active, calling bricksentry first: `whats_downstream` (no dependents), `rollback_plan` (matched DESCRIBE HISTORY), `preview_write` (verdict `warn`: exactly the 3 departments with employees on leave changed, the headcount total up 11.76%), `safe_to_ship` (true). Only then did it apply the change, and checked the result against Silver independently. The calls went through the Python package in a notebook, not yet through the MCP server deployed as a Databricks app.
@@ -228,6 +234,8 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
+| Edge-case rounds on 0.1.30 | `--` or `/*` inside a quoted value hid a following statement from the `preview_write` guard (found while fixing the rounds' findings) | 0.1.31 |
+| Edge-case rounds on 0.1.30 | A leading comment was refused; `{{target}}` inside a quoted value became the clone's name; a missing Slack secret gave a traceback; carrier-grade NAT addresses passed the URL guard; no way to remove clones of killed runs | 0.1.31 |
 | First use as an assistant's gate (0.1.29) | Previewing `CREATE OR REPLACE TABLE` failed on serverless (it replaced the shallow clone, which can't take `CLUSTER BY AUTO`) | 0.1.30 |
 | Pre-release check of 0.1.29 | As a hard gate, the query-plan check refused legitimate agent MERGEs (serverless plan formats vary) | 0.1.29 (made a second opinion) |
 | Pre-release check of 0.1.29 | A listed view over an unlisted table, or a SQL function reading one, let an agent learn that table's row counts (also in 0.1.28); serverless query plans don't show tables inside views or functions | 0.1.29 |
