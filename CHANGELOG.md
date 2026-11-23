@@ -6,7 +6,9 @@ From a round of 15 previously untested areas on 0.1.32 on a Free Edition workspa
 
 - **Tags and owners are read afresh for every check.** Unity Catalog lineage cached a table's owner and tags (and column tags) for the life of the process. A one-shot job run was unaffected, but in a long-running process, such as the MCP server agents use, a `pii` or `certified` tag added after the first check of a table was never seen, so those rules silently stopped applying to it. Every check (`assess`, `preview_write`, `check-last-change`, `impact`) now starts by forgetting cached governance metadata.
 - A long-running process keeps at most the 500 most recent assessments in memory; older ones are still found in the assessment store when one is configured.
-- README: Unity Catalog can take several minutes to show new lineage and tags in its system tables, so a check right after tagging a table may not see the tag yet.
+- README: Unity Catalog shows new tags within about a minute but new lineage can take 10–15 minutes, so a check right after a change may not see it yet.
+
+Verified before release on Databricks Free Edition from the release branch: one long-running instance gave `warn` on an untagged table, then `needs_human` ("table is tagged pii") once the tag was added, and likewise `pii-column-changed` for a column tag, with `impact` showing the tag and the downstream column; a key-colliding MERGE still gives BLOCK with a correct Undo, and masked tables still get the clear message.
 
 ## 0.1.32 (2026-11-22)
 
