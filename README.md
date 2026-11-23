@@ -482,6 +482,7 @@ bricksentry is in **public beta** (0.1.x). It has been tested hard but only by i
 
 ## Known limits (v0.1.x)
 
+- **Lineage and tags arrive with a delay.** Unity Catalog can take several minutes (about 10 on a Free Edition workspace) to show new lineage and tags in its system tables. A check right after a table is tagged `pii` may not see the tag yet. bricksentry reads them afresh for every check, so the next check after they appear does.
 - **Lineage is recorded at runtime.** Brand-new tables have no downstream history yet. Unity Catalog doesn't capture RDD operations, and UDFs hide column-level mapping; column lineage records source-to-target derivations, so a column used only in a filter or join may not appear.
 - **Tables with column masks or row filters can't be checked.** Databricks refuses shallow clones and time travel on them, so `preview_write` and `check-last-change` stop with a message saying so. bricksentry won't copy governed data into the sandbox to get around it. Check the change on the table that feeds it, or on a dev copy without the mask or filter.
 - **Keys are required.** Tables without a stable key can't be diffed row by row yet (an aggregate-profile mode is planned).

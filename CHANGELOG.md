@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.33 (2026-11-23)
+
+From a round of 15 previously untested areas on 0.1.32 on a Free Edition workspace. Thirteen were verified for the first time (NOT NULL and generated columns, empty tables, unicode names, INSERT OVERWRITE, duplicate and NULL keys in both directions, OPTIMIZE and RESTORE as the latest commit, bad job arguments, and the `wide-blast-radius` and `pii-table` rules firing on real Unity Catalog lineage and tags). It found one defect:
+
+- **Tags and owners are read afresh for every check.** Unity Catalog lineage cached a table's owner and tags (and column tags) for the life of the process. A one-shot job run was unaffected, but in a long-running process, such as the MCP server agents use, a `pii` or `certified` tag added after the first check of a table was never seen, so those rules silently stopped applying to it. Every check (`assess`, `preview_write`, `check-last-change`, `impact`) now starts by forgetting cached governance metadata.
+- A long-running process keeps at most the 500 most recent assessments in memory; older ones are still found in the assessment store when one is configured.
+- README: Unity Catalog can take several minutes to show new lineage and tags in its system tables, so a check right after tagging a table may not see the tag yet.
+
 ## 0.1.32 (2026-11-22)
 
 Fixes from a scale, adversarial and platform-feature round on 0.1.31 on a Free Edition workspace. It found no safety problem: previews took 20–33 s on 1 million rows and 27–29 s on 10 million with exact counts; 8 operations at once on the same tables finished cleanly with unique clones; partitioned, liquid-clustered, identity-column and CHECK-constraint tables previewed correctly; hostile column names, forbidden words in values and 300-clause SQL were handled.

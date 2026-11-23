@@ -33,6 +33,12 @@ Please share what you see, especially from other clouds, classic compute and big
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
 
+## Fifteen untested areas on 0.1.32, and 0.1.33 (November 22, 2026)
+
+On the published 0.1.32 in a scratch schema dropped at the end. Verified for the first time: a NOT NULL violation fails on the clone only; generated columns, empty tables (0 → 30 rows) and unicode column names with emoji values preview correctly; INSERT OVERWRITE gives a correct diff (99.95% removed, `needs_human`); duplicate keys are caught both ways (a write creating them is blocked in preview, a commit creating them is BLOCK in `check-last-change`, an already-duplicated target warns); NULL keys warn; with OPTIMIZE or RESTORE as the latest commit, `check-last-change` checks the right data change and its Undo points back correctly; a job with a nonexistent table or a dead warehouse exits 2 with one line. `wide-blast-radius` fired on 30 real downstream tables and `pii-table` on a real Unity Catalog tag, once Unity Catalog had shown them (about 10 minutes on Free Edition).
+
+Defect, fixed in 0.1.33: Unity Catalog owners and tags were cached for the life of the process, so a long-running process (such as the MCP server) never saw a tag added after its first check of a table. A new instance saw it at once. Not testable on serverless: Undo after VACUUM removed old files (the retention override is blocked).
+
 ## Scale, adversarial and platform-feature round on 0.1.31, and 0.1.32 (November 22, 2026)
 
 **500 million and 1 billion rows** (0.1.31, same battery; narrow synthetic tables of 1.8 GB and 3.5 GB on disk, so real, wider tables will take longer):
@@ -256,6 +262,7 @@ the `RESTORE` and "failing this task so downstream tasks don't run".
 
 | Found in | Problem | Fixed in |
 |---|---|---|
+| Fifteen untested areas on 0.1.32 | A tag added after a long-running process's first check of a table was never seen (owners and tags cached for the process's life) | 0.1.33 |
 | Scale and platform round on 0.1.31 | A column named `` `drop` `` was refused as a DROP | 0.1.32 |
 | Scale and platform round on 0.1.31 | Tables with column masks or row filters failed at the clone without saying why (Databricks refuses clones and time travel on them) | 0.1.32 (clear message up front) |
 | Edge-case rounds on 0.1.30 | `--` or `/*` inside a quoted value hid a following statement from the `preview_write` guard (found while fixing the rounds' findings) | 0.1.31 |

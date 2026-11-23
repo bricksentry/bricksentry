@@ -61,6 +61,11 @@ class Sentry:
         return d
 
     def downstream(self, table: str, depth: int | None = None) -> list[ImpactNode]:
+        """Downstream lineage with owners and tags read afresh (see ``LineageProvider.refresh``)."""
+        self.lineage.refresh()
+        return self._downstream(table, depth)
+
+    def _downstream(self, table: str, depth: int | None = None) -> list[ImpactNode]:
         return self.lineage.downstream(table, depth or int(self.config.lineage.get("depth", 3)))
 
     def rollback_plan(self, table: str) -> str:
@@ -87,6 +92,9 @@ class Sentry:
         """
         candidates = candidates or {}
         diffs = diffs or {}
+        # Governance metadata (tags, owners) is read afresh for every check, never reused from an
+        # earlier one: in a long-lived process a tag added since would otherwise be missed.
+        self.lineage.refresh()
         results: list[TableAssessment] = []
         notify: set[str] = set()
         for table in tables:
@@ -102,7 +110,7 @@ class Sentry:
                     err = str(e)
             lineage_err: str | None = None
             try:
-                nodes = self.downstream(table)
+                nodes = self._downstream(table)
             except Exception as e:  # e.g. no SELECT on system.access.table_lineage
                 nodes = []
                 lineage_err = _first_line(e)
@@ -147,7 +155,7 @@ class Sentry:
             policy_sha256=self.policy.sha256,
             triggered_by=_actor(),
         )
-        self._assessments[a.id] = a
+        self._remember(a)
         self._save(a)
         return a
 
@@ -194,7 +202,7 @@ class Sentry:
             a = Assessment.from_dict(json.loads(f.read_text()))
         except (OSError, ValueError, KeyError, TypeError):
             return None
-        self._assessments[a.id] = a
+        self._remember(a)
         return a
 
     def preview_write(
@@ -289,6 +297,14 @@ class Sentry:
         except ValueError as e:
             return [f"notify: bad config ({e})"]
         return send(assessment, settings, pr=pr, force=force)
+
+    _MAX_IN_MEMORY = 500  # a long-lived server shouldn't grow forever; older ones reload from the store
+
+    def _remember(self, a: Assessment) -> None:
+        self._assessments.pop(a.id, None)
+        self._assessments[a.id] = a
+        while len(self._assessments) > self._MAX_IN_MEMORY:
+            self._assessments.pop(next(iter(self._assessments)))
 
     # --- lookups for agents -------------------------------------------------
     def get_assessment(self, assessment_id: str) -> Assessment | None:

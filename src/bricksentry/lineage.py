@@ -45,6 +45,12 @@ class LineageProvider(ABC):
         """Downstream columns fed by ``columns`` of ``table``, with their tags."""
         return []
 
+    def refresh(self) -> None:
+        """Forget anything cached, so the next check reads owners and tags afresh.
+        Called at the start of every check: a long-lived process (the MCP server)
+        must see a pii or certified tag added after its first check."""
+        return None  # nothing cached by default
+
 
 class StaticLineage(LineageProvider):
     """Lineage from config::
@@ -178,6 +184,11 @@ class UnityCatalogLineage(LineageProvider):
         self._col_tag_cache: dict[str, dict[str, dict[str, str]]] = {}
         self._meta_cache: dict[str, tuple[str | None, dict[str, str]]] = {}
         self._exists: dict[str, bool] = {}  # True / False when information_schema answered; absent if unknown
+
+    def refresh(self) -> None:
+        self._col_tag_cache.clear()
+        self._meta_cache.clear()
+        self._exists.clear()
 
     def _excluded(self, name: str) -> bool:
         n = name.lower()

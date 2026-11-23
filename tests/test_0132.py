@@ -116,3 +116,43 @@ def test_cli_and_job_report_it_cleanly(monkeypatch, tmp_path):
     lines: list[str] = []
     code = job.run(["--tables", "sales.orders", "--scratch-schema", "scratch"], backend=db, out=lines.append)
     assert code == 2 and "has a column mask" in "\n".join(lines)
+
+
+# --- governance metadata is read afresh for every check (0.1.33) ----------------------
+def _uc(backend):
+    from bricksentry.lineage import UnityCatalogLineage
+
+    backend.execute("CREATE SCHEMA IF NOT EXISTS sys3")
+    backend.execute("CREATE OR REPLACE TABLE sys3.table_lineage AS SELECT * FROM (VALUES "
+                    "('sales.orders', 'sales.daily', 'JOB', '1', current_date)) "
+                    "t(source_table_full_name, target_table_full_name, entity_type, entity_id, event_date)")
+    backend.execute("CREATE OR REPLACE TABLE sys3.tables AS SELECT * FROM (VALUES "
+                    "(NULL, 'sales', 'orders', 'data-team'), (NULL, 'sales', 'daily', 'bi')) "
+                    "t(table_catalog, table_schema, table_name, table_owner)")
+    backend.execute("CREATE OR REPLACE TABLE sys3.table_tags AS SELECT * FROM (VALUES "
+                    "('x', 'x', 'x', 'x', NULL)) t(catalog_name, schema_name, table_name, tag_name, tag_value)")
+    return UnityCatalogLineage(backend, lineage_table="sys3.table_lineage", tables_table="sys3.tables",
+                               tags_table="sys3.table_tags")
+
+
+def test_tag_added_after_first_check_is_seen(sentry):
+    b = sentry.backend
+    lin = _uc(b)
+    s = Sentry(sentry.config, backend=b, lineage=lin)
+    first = s.preview_write("UPDATE {{target}} SET status = 'x' WHERE order_id = 1", "sales.orders")
+    assert "pii" not in str(first)
+    # A long-lived process (the MCP server): the tag is added after the first check.
+    b.execute("INSERT INTO sys3.table_tags VALUES (NULL, 'sales', 'orders', 'pii', NULL), "
+              "(NULL, 'sales', 'daily', 'certified', NULL)")
+    second = s.preview_write("UPDATE {{target}} SET status = 'y' WHERE order_id = 1", "sales.orders")
+    t = second["tables"][0]
+    assert "pii" in t["tags"], t
+    nodes = s.downstream("sales.orders")
+    assert any("certified" in n.tags for n in nodes)
+
+
+def test_in_memory_assessments_are_capped(sentry, monkeypatch):
+    monkeypatch.setattr(type(sentry), "_MAX_IN_MEMORY", 3)
+    ids = [sentry.preview_write(f"UPDATE {{{{target}}}} SET status = 's{i}' WHERE order_id = 1",
+                                "sales.orders")["id"] for i in range(5)]
+    assert list(sentry._assessments) == ids[-3:]
