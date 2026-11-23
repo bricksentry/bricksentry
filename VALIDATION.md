@@ -33,6 +33,10 @@ Please share what you see, especially from other clouds, classic compute and big
   row counts and Delta versions and that the pipeline's scheduled guard jobs didn't fire.
 - Workspace specifics (warehouse IDs, job IDs, users, internal table names) are left out on purpose.
 
+## Last policy rules on 0.1.33 (November 22, 2026)
+
+On the published 0.1.33, once Unity Catalog lineage had settled: a change to an upstream table returned `needs_human` from `certified-downstream` ("1 downstream asset(s) tagged certified"), with the right Undo. The table owner resolved from Unity Catalog, and the Slack message @-mentioned the mapped owner with that reason; a failing webhook still gave one status line without its URL. Every built-in policy rule has now fired on real Databricks except `dashboard-downstream`, which needs an AI/BI dashboard reading the table.
+
 ## Fifteen untested areas on 0.1.32, and 0.1.33 (November 22, 2026)
 
 On the published 0.1.32 in a scratch schema dropped at the end. Verified for the first time: a NOT NULL violation fails on the clone only; generated columns, empty tables (0 → 30 rows) and unicode column names with emoji values preview correctly; INSERT OVERWRITE gives a correct diff (99.95% removed, `needs_human`); duplicate keys are caught both ways (a write creating them is blocked in preview, a commit creating them is BLOCK in `check-last-change`, an already-duplicated target warns); NULL keys warn; with OPTIMIZE or RESTORE as the latest commit, `check-last-change` checks the right data change and its Undo points back correctly; a job with a nonexistent table or a dead warehouse exits 2 with one line. `wide-blast-radius` fired on 30 real downstream tables and `pii-table` on a real Unity Catalog tag, once Unity Catalog had shown them (about 10 minutes on Free Edition).
