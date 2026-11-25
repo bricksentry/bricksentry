@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use bricksentry in your work, please cite it as below."
+type: software
+title: "bricksentry"
+abstract: >-
+  bricksentry is an open-source change-safety layer for Databricks. It helps
+  data teams and AI agents understand the impact of a data change before it
+  reaches production: it previews the change on a Delta shallow clone, diffs
+  the data against a pinned table version, reads Unity Catalog lineage to find
+  what depends on the table, applies policy rules to return a pass, warn,
+  needs_human or block verdict, and prepares the RESTORE command to undo it.
+authors:
+  - name: "Brahma"
+version: "0.1.33"
+date-released: "2026-11-23"
+license: Apache-2.0
+url: "https://bricksentry.org"
+repository-code: "https://github.com/bricksentry/bricksentry"
+keywords:
+  - databricks
+  - data-engineering
+  - data-quality
+  - data-diff
+  - delta-lake
+  - unity-catalog
+  - ai-agents
+  - mcp
+  - change-safety
