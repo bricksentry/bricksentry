@@ -60,10 +60,12 @@ jobs:
       - name: Serves the MCP tools over stdio
         run: |
           printf 'sandbox_schema: scratch\nlineage: {type: static}\nbackend: {type: duckdb, path: ":memory:"}\n' > /tmp/bs.yml
-          printf '%s\n' \
+          # Keep stdin open for a few seconds after the requests: closing it at once can stop
+          # the server before it answers tools/list, which made this check flaky.
+          { printf '%s\n' \
             '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'; sleep 10; } \
             | timeout 60 docker run -i --rm -v /tmp/bs.yml:/config/bricksentry.yml:ro bricksentry-mcp:ci > /tmp/out.jsonl || true
           python3 - <<'PY'
           import json
