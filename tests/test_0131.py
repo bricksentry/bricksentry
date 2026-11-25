@@ -117,7 +117,7 @@ def test_job_malformed_secret_ref(monkeypatch):
     lines: list[str] = []
     code = job.run(["--tables", "sales.orders", "--scratch-schema", "scratch", "--slack-secret", "noslash"],
                    backend=FakeDelta(), out=lines.append)
-    assert code == 2 and "must be scope/key" in "\n".join(lines)
+    assert code == 2 and "must name a Databricks secret as scope/key" in "\n".join(lines)
 
 
 # --- cleanup -------------------------------------------------------------------------------

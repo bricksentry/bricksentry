@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.34 (2026-11-25)
+
+From GitHub code scanning (CodeQL):
+
+- **A webhook URL passed where a secret reference belongs is never printed.** The job's `--slack-secret` and `--teams-secret` take a Databricks secret reference, `scope/key`. If the webhook URL itself was passed by mistake, the error that said the secret couldn't be read repeated the value, so the URL (which is itself the credential for posting to the channel) appeared in the job's log. A value that isn't two plain names separated by `/` is now refused with a message that doesn't include it.
+
+The other code-scanning alerts were false positives: CodeQL treats table names such as `bricksentry_hr_employees` and `bricksentry_hr_compensation` as private data, so printing those names in the HR walkthrough notebook and writing them to the agent audit log was flagged. Neither prints any of the tables' values.
+
 ## 0.1.33 (2026-11-23)
 
 From a round of 15 previously untested areas on 0.1.32 on a Free Edition workspace. Thirteen were verified for the first time (NOT NULL and generated columns, empty tables, unicode names, INSERT OVERWRITE, duplicate and NULL keys in both directions, OPTIMIZE and RESTORE as the latest commit, bad job arguments, and the `wide-blast-radius` and `pii-table` rules firing on real Unity Catalog lineage and tags). It found one defect:

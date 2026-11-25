@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import warnings
 from datetime import datetime, timedelta, timezone
@@ -53,13 +54,26 @@ def parse_keys(values: list[str]) -> dict[str, list[str]]:
     return out
 
 
+_SECRET_REF = re.compile(r"[A-Za-z0-9_.\-]{1,128}/[A-Za-z0-9_.\-]{1,128}")
+
+
+def _check_secret_ref(ref: str, flag: str = "--*-secret") -> None:
+    """A secret *reference* is two names, scope/key. Anything else (most likely the webhook URL
+    itself, pasted by mistake) is refused without echoing it, so it never lands in a job log."""
+    if not _SECRET_REF.fullmatch(ref):
+        raise SystemExit(
+            f"{flag} must name a Databricks secret as scope/key (for example bricksentry/slack_webhook). "
+            "The value given isn't in that form, so it isn't printed here. If you pasted the webhook URL "
+            "itself, store it in a secret scope and pass scope/key instead."
+        )
+
+
 def read_secret(ref: str | None) -> str | None:  # pragma: no cover - needs Databricks
     """``scope/key`` from a Databricks secret scope."""
     if not ref:
         return None
+    _check_secret_ref(ref)
     scope, _, key = ref.partition("/")
-    if not (scope and key):
-        raise SystemExit(f"--*-secret must be scope/key, got {ref!r}")
     try:
         from databricks.sdk.runtime import dbutils
 
@@ -103,6 +117,7 @@ def _secret_or_problem(ref: str | None, flag: str, problems: list[str] | None):
     if not ref:
         return None
     try:
+        _check_secret_ref(ref, flag)  # before anything echoes ref
         return read_secret(ref)
     except SystemExit as e:  # a malformed scope/key
         msg = str(e)

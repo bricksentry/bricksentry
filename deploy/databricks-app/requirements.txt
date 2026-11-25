@@ -1,1 +1,1 @@
-bricksentry[databricks,mcp]==0.1.33
+bricksentry[databricks,mcp]==0.1.34
